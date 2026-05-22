@@ -141,9 +141,7 @@ def test_search_earth_search_uses_rfc3339_datetime(monkeypatch, tmp_path):
     request = _build_request(tmp_path)
 
     assert _search_earth_search(request) == []
-    assert captured_payload["datetime"] == (
-        "2024-06-01T00:00:00Z/2024-08-31T23:59:59Z"
-    )
+    assert captured_payload["datetime"] == ("2024-06-01T00:00:00Z/2024-08-31T23:59:59Z")
 
 
 def _build_request(output_dir: Path) -> RasterDownloadRequest:

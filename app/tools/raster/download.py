@@ -1,3 +1,5 @@
+"""基于尺度的 raster 数据下载工具。"""
+
 import json
 import shutil
 from datetime import date, datetime
@@ -15,7 +17,6 @@ from app.tools.raster.schemas import (
     RasterScene,
 )
 from app.utils.logging import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -111,8 +112,7 @@ def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     except HTTPError as error:
         error_body = error.read().decode("utf-8", errors="replace")
         raise RasterDownloadError(
-            f"Failed to query STAC API: {url} "
-            f"(HTTP {error.code}: {error_body})"
+            f"Failed to query STAC API: {url} " f"(HTTP {error.code}: {error_body})"
         ) from error
     except (OSError, URLError, json.JSONDecodeError) as error:
         raise RasterDownloadError(f"Failed to query STAC API: {url}") from error

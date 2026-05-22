@@ -2,7 +2,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
-
 EARTH_SEARCH_COLLECTION = "sentinel-2-l2a"
 EARTH_SEARCH_BAND_ASSETS = {
     "B04": "red",
@@ -12,6 +11,61 @@ EARTH_SEARCH_BAND_ASSETS = {
 
 class RasterDownloadError(RuntimeError):
     """栅格数据下载失败时抛出的错误。"""
+
+
+class AOIRequest(BaseModel):
+    """行政区 AOI 解析请求。
+
+    上游 LLM 应尽量把用户输入转换成这组可直接请求的数据。
+
+    Attributes:
+        name: 行政区名称，例如 ``Milan``。
+        iso3: 国家 ISO-3166 Alpha-3 代码，例如 ``ITA``。
+        admin_level: 行政区级别，例如 ``ADM0``、``ADM1``、``ADM2``。
+        output_dir: AOI 边界文件输出目录。
+        release_type: geoBoundaries 发布类型。V1 默认使用 ``gbOpen``。
+    """
+
+    name: str
+    iso3: str = Field(min_length=3, max_length=3)
+    admin_level: str
+    output_dir: Path
+    release_type: str = "gbOpen"
+
+    @field_validator("iso3")
+    @classmethod
+    def normalize_iso3(cls, iso3: str) -> str:
+        return iso3.upper()
+
+    @field_validator("admin_level")
+    @classmethod
+    def normalize_admin_level(cls, admin_level: str) -> str:
+        return admin_level.upper()
+
+
+class AOIResult(BaseModel):
+    """AOI 解析结果。
+
+    Attributes:
+        name: 匹配到的行政区名称。
+        iso3: 国家 ISO-3166 Alpha-3 代码。
+        admin_level: 行政区级别。
+        boundary_geojson_path: 提取出的目标行政区 GeoJSON 路径。
+        bbox: 最小覆盖目标行政区的 bbox，顺序为
+            ``[min_lon, min_lat, max_lon, max_lat]``。
+        area_km2: 根据 bbox 估算的近似面积，单位为平方千米。
+        spatial_scale: 空间尺度分类，例如 ``local``、``regional``。
+        source: AOI 来源。
+    """
+
+    name: str
+    iso3: str
+    admin_level: str
+    boundary_geojson_path: str
+    bbox: list[float]
+    area_km2: float
+    spatial_scale: str
+    source: str
 
 
 class RasterDownloadRequest(BaseModel):
