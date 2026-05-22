@@ -1,0 +1,15 @@
+from app.workflows.v1_workflow import run_v1_workflow
+
+
+def test_v1_workflow_completes_mock_ndvi_request():
+    state = run_v1_workflow("Generate an NDVI vegetation map for Milan.")
+
+    assert state.status == "completed"
+    assert state.index == "NDVI"
+    assert state.required_bands == ["B04", "B08"]
+    assert state.preview_path
+    assert state.final_answer
+    assert state.warnings == [
+        "Using mock AOI bounding box for Milan.",
+        "Using mock Sentinel-2 band paths.",
+    ]
