@@ -1,14 +1,7 @@
 from typing import Any
 
-from app.schemas.state import AgentState
-
-
-INDEX_REGISTRY = {
-    "NDVI": {
-        "required_bands": ["B04", "B08"],
-        "index_formula": "(nir - red) / (nir + red)",
-    }
-}
+from app.registry import get_index_config
+from app.schemas import AgentState
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
@@ -21,8 +14,11 @@ def planner_node(state: AgentState) -> dict[str, Any]:
 
 
 def registry_node(state: AgentState) -> dict[str, Any]:
-    index_config = INDEX_REGISTRY[state.index or "NDVI"]
-    return index_config
+    index_config = get_index_config(state.index or "NDVI")
+    return {
+        "required_bands": index_config.required_bands,
+        "index_formula": index_config.index_formula,
+    }
 
 
 def workflow_router_node(state: AgentState) -> dict[str, Any]:

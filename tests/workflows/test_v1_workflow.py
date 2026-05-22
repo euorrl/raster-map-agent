@@ -2,6 +2,7 @@ from app.workflows.v1_workflow import run_v1_workflow
 
 
 def test_v1_workflow_completes_mock_ndvi_request():
+    # 验证 V1 mock workflow 能完整跑通一个 NDVI 请求。
     state = run_v1_workflow("Generate an NDVI vegetation map for Milan.")
 
     assert state.status == "completed"
