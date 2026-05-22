@@ -8,4 +8,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-ra"
+addopts = "-ra --cov=app --cov-report=term-missing"
