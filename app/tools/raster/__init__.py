@@ -1,9 +1,9 @@
-from app.tools.raster import (
+from app.tools.raster.download import download_raster_bands
+from app.tools.raster.schemas import (
     RasterDownloadError,
     RasterDownloadRequest,
     RasterDownloadResult,
     RasterScene,
-    download_raster_bands,
 )
 
 __all__ = [
