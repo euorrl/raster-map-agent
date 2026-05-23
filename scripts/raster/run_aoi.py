@@ -12,10 +12,8 @@ def main() -> None:
     configure_logging("INFO")
 
     request = AOIRequest(
-        name="Milano",
-        iso3="ITA",
-        admin_level="ADM3",
-        output_dir=Path("data/speak1/aoi"),
+        query="Shanghai, China",
+        output_dir=Path("data/speak2/aoi"),
     )
 
     result = resolve_administrative_aoi(request)

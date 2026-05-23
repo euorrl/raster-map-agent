@@ -1,173 +1,146 @@
-"""行政区 AOI 边界下载与尺度判断工具。"""
+"""基于 Nominatim 的 AOI 边界解析工具。"""
 
 import json
 import math
 import re
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from app.tools.raster.schemas import AOIRequest, AOIResult, RasterDownloadError
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-GEBOUNDARIES_API_TEMPLATE = (
-    "https://www.geoboundaries.org/api/current/{release_type}/{iso3}/{admin_level}/"
-)
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_USER_AGENT = "raster-map-agent/0.1 portfolio demo"
 LOCAL_SCALE_MAX_AREA_KM2 = 5_000
 REGIONAL_SCALE_MAX_AREA_KM2 = 200_000
 KM_PER_DEGREE_LAT = 111.32
-BOUNDARY_NAME_KEYS = (
-    "shapeName",
-    "shapeISO",
-    "shapeID",
-    "name",
-    "NAME",
-    "NAME_0",
-    "NAME_1",
-    "NAME_2",
-    "ADM0_NAME",
-    "ADM1_NAME",
-    "ADM2_NAME",
-)
 
 
 def resolve_administrative_aoi(request: AOIRequest) -> AOIResult:
-    """下载行政区边界，并返回后续栅格下载需要的 AOI 信息。
+    """用 Nominatim 查询 AOI 边界，并返回栅格下载/裁剪需要的信息。
 
     Args:
-        request: 由上游 LLM 生成的行政区请求，例如国家代码、行政区级别和名称。
+        request: 包含消歧地点查询字符串和输出目录的 AOI 请求。
 
     Returns:
-        包含 shapefile zip、目标行政区 GeoJSON、bbox、面积和尺度分类的结果。
+        包含目标 AOI GeoJSON、bbox、面积和尺度分类的结果。
     """
 
     output_dir = request.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(
-        "Resolving administrative AOI name=%s iso3=%s admin_level=%s",
-        request.name,
-        request.iso3,
-        request.admin_level,
-    )
-    metadata = _fetch_geoboundaries_metadata(request)
-    geojson_url = _require_metadata_url(metadata, "gjDownloadURL")
-
-    geojson = _get_json(geojson_url)
-    feature = _select_boundary_feature(geojson, request.name)
+    logger.info("Resolving AOI query=%s", request.query)
+    geojson = _search_nominatim(request)
+    feature = _select_boundary_feature(geojson, request.query)
     selected_geojson = {"type": "FeatureCollection", "features": [feature]}
-    boundary_geojson_path = output_dir / _build_boundary_geojson_name(request)
+
+    name = _feature_name(feature) or request.query
+    boundary_geojson_path = output_dir / _build_boundary_geojson_name(request.query)
     boundary_geojson_path.write_text(
         json.dumps(selected_geojson, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     logger.info("Saved AOI GeoJSON path=%s", boundary_geojson_path)
 
-    bbox = _geometry_bbox(feature["geometry"])
+    bbox = _geometry_bbox(feature)
     area_km2 = _estimate_bbox_area_km2(bbox)
     spatial_scale = _classify_spatial_scale(area_km2)
     logger.info(
         "Resolved AOI name=%s bbox=%s area_km2=%.2f spatial_scale=%s",
-        _feature_name(feature) or request.name,
+        name,
         bbox,
         area_km2,
         spatial_scale,
     )
 
     return AOIResult(
-        name=_feature_name(feature) or request.name,
-        iso3=request.iso3,
-        admin_level=request.admin_level,
+        name=name,
         boundary_geojson_path=str(boundary_geojson_path),
         bbox=bbox,
         area_km2=area_km2,
         spatial_scale=spatial_scale,
-        source="geoBoundaries",
+        source="nominatim",
     )
 
 
-def _fetch_geoboundaries_metadata(request: AOIRequest) -> dict:
-    """请求 geoBoundaries 元数据，获取边界文件下载地址。"""
+def _search_nominatim(request: AOIRequest) -> dict:
+    """请求 Nominatim，返回 GeoJSON 格式候选结果。"""
 
-    url = GEBOUNDARIES_API_TEMPLATE.format(
-        release_type=request.release_type,
-        iso3=request.iso3,
-        admin_level=request.admin_level,
-    )
-    logger.info("Querying geoBoundaries metadata url=%s", url)
+    params = {
+        "q": request.query,
+        "format": "geojson",
+        "polygon_geojson": 1,
+        "addressdetails": 1,
+        "limit": request.limit,
+    }
+    url = f"{NOMINATIM_SEARCH_URL}?{urlencode(params)}"
+    logger.info("Querying Nominatim url=%s", url)
     return _get_json(url)
-
-
-def _require_metadata_url(metadata: dict, key: str) -> str:
-    """从 geoBoundaries 元数据中读取必须存在的下载链接。"""
-
-    value = metadata.get(key)
-    if not value:
-        raise RasterDownloadError(f"geoBoundaries metadata missing URL: {key}")
-
-    return value
 
 
 def _get_json(url: str) -> dict:
     """请求 JSON 接口并解析为字典。"""
 
+    request = Request(url, headers={"User-Agent": NOMINATIM_USER_AGENT})
+
     try:
-        with urlopen(url, timeout=60) as response:
+        with urlopen(request, timeout=60) as response:
             return json.loads(response.read().decode("utf-8"))
     except (HTTPError, URLError) as error:
         raise RasterDownloadError(f"Failed to query AOI boundary API: {url}") from error
 
 
-def _select_boundary_feature(geojson: dict, boundary_name: str) -> dict:
-    """从行政区 FeatureCollection 中选出目标行政区。"""
+def _select_boundary_feature(geojson: dict, query: str) -> dict:
+    """从 Nominatim 候选结果中选出第一个 polygon 边界。"""
 
     features = geojson.get("features", [])
     logger.info("Searching AOI boundary candidates count=%s", len(features))
-    normalized_target = _normalize_name(boundary_name)
 
     for feature in features:
-        if _normalize_name(_feature_name(feature)) == normalized_target:
-            logger.info("Matched AOI boundary name=%s", _feature_name(feature))
+        geometry_type = feature.get("geometry", {}).get("type")
+        if geometry_type in {"Polygon", "MultiPolygon"}:
+            logger.info(
+                "Matched AOI boundary name=%s geometry_type=%s",
+                _feature_name(feature),
+                geometry_type,
+            )
             return feature
 
-    for feature in features:
-        feature_name = _normalize_name(_feature_name(feature))
-        if normalized_target in feature_name or feature_name in normalized_target:
-            logger.info("Matched AOI boundary name=%s", _feature_name(feature))
-            return feature
-
-    sample_names = [
-        _feature_name(feature) for feature in features[:10] if _feature_name(feature)
-    ]
+    sample_names = [_feature_name(feature) for feature in features[:10]]
     raise RasterDownloadError(
-        f"AOI boundary not found: {boundary_name}. "
+        f"AOI boundary not found: {query}. "
         f"candidates={len(features)} sample_names={sample_names}"
     )
 
 
 def _feature_name(feature: dict) -> str:
-    """按常见字段顺序读取行政区名称。"""
+    """读取 Nominatim 返回的地点显示名称。"""
 
     properties = feature.get("properties", {})
-    for key in BOUNDARY_NAME_KEYS:
-        value = properties.get(key)
-        if value:
-            return str(value)
+    display_name = properties.get("display_name")
+    if display_name:
+        return str(display_name)
+
+    name = properties.get("name")
+    if name:
+        return str(name)
 
     return ""
 
 
-def _normalize_name(name: str) -> str:
-    """把名称转换成适合粗匹配的形式。"""
+def _geometry_bbox(feature: dict) -> list[float]:
+    """从 Nominatim feature 中计算最小 bbox。"""
 
-    return re.sub(r"\s+", " ", name).strip().casefold()
+    bbox = feature.get("bbox")
+    if bbox and len(bbox) == 4:
+        return [bbox[0], bbox[1], bbox[2], bbox[3]]
 
-
-def _geometry_bbox(geometry: dict) -> list[float]:
-    """从 GeoJSON geometry 中计算最小 bbox。"""
-
-    coordinates = list(_iter_coordinates(geometry.get("coordinates", [])))
+    coordinates = list(
+        _iter_coordinates(feature.get("geometry", {}).get("coordinates", []))
+    )
     if not coordinates:
         raise RasterDownloadError("AOI geometry has no coordinates")
 
@@ -215,8 +188,8 @@ def _classify_spatial_scale(area_km2: float) -> str:
     return "continental"
 
 
-def _build_boundary_geojson_name(request: AOIRequest) -> str:
-    """生成目标行政区 GeoJSON 的本地文件名。"""
+def _build_boundary_geojson_name(name: str) -> str:
+    """生成目标 AOI GeoJSON 的本地文件名。"""
 
-    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", request.name).strip("_")
-    return f"{safe_name}_{request.iso3}_{request.admin_level}.geojson"
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")
+    return f"{safe_name or 'aoi'}.geojson"

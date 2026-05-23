@@ -8,27 +8,28 @@ from app.tools.raster import AOIRequest, RasterDownloadError, resolve_administra
 def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
     monkeypatch, tmp_path
 ):
-    """行政区请求应返回边界文件路径、目标 GeoJSON、bbox 和尺度。"""
+    """Nominatim 查询应返回目标 GeoJSON、bbox 和尺度。"""
 
-    metadata = {
-        "staticDownloadLink": "https://example.com/ITA_ADM2.zip",
-        "gjDownloadURL": "https://example.com/ITA_ADM2.geojson",
-    }
     geojson = {
         "type": "FeatureCollection",
         "features": [
             {
                 "type": "Feature",
-                "properties": {"shapeName": "Milano"},
+                "bbox": [119.9, 30.1, 120.5, 30.5],
+                "properties": {
+                    "display_name": "Hangzhou, Zhejiang, China",
+                    "category": "boundary",
+                    "type": "administrative",
+                },
                 "geometry": {
                     "type": "Polygon",
                     "coordinates": [
                         [
-                            [9.04, 45.35],
-                            [9.32, 45.35],
-                            [9.32, 45.56],
-                            [9.04, 45.56],
-                            [9.04, 45.35],
+                            [119.9, 30.1],
+                            [120.5, 30.1],
+                            [120.5, 30.5],
+                            [119.9, 30.5],
+                            [119.9, 30.1],
                         ]
                     ],
                 },
@@ -36,71 +37,89 @@ def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
         ],
     }
 
-    def fake_get_json(url):
-        if url.endswith("/gbOpen/ITA/ADM2/"):
-            return metadata
-
-        return geojson
-
-    monkeypatch.setattr("app.tools.raster.aoi._get_json", fake_get_json)
+    monkeypatch.setattr("app.tools.raster.aoi._get_json", lambda _url: geojson)
 
     result = resolve_administrative_aoi(
         AOIRequest(
-            name="Milano",
-            iso3="ita",
-            admin_level="adm2",
+            query="Hangzhou, Zhejiang, China",
             output_dir=tmp_path,
         )
     )
 
-    assert result.name == "Milano"
-    assert result.iso3 == "ITA"
-    assert result.admin_level == "ADM2"
-    assert result.bbox == [9.04, 45.35, 9.32, 45.56]
+    assert result.name == "Hangzhou, Zhejiang, China"
+    assert result.bbox == [119.9, 30.1, 120.5, 30.5]
     assert result.area_km2 > 0
     assert result.spatial_scale == "local"
-    assert result.source == "geoBoundaries"
-    assert result.boundary_geojson_path.endswith("Milano_ITA_ADM2.geojson")
+    assert result.source == "nominatim"
+    assert result.boundary_geojson_path.endswith("Hangzhou_Zhejiang_China.geojson")
 
     selected_geojson = json.loads(
-        tmp_path.joinpath("Milano_ITA_ADM2.geojson").read_text()
+        tmp_path.joinpath("Hangzhou_Zhejiang_China.geojson").read_text(encoding="utf-8")
     )
-    assert selected_geojson["features"][0]["properties"]["shapeName"] == "Milano"
+    assert selected_geojson["features"][0]["properties"]["type"] == "administrative"
 
 
-def test_resolve_administrative_aoi_raises_when_boundary_missing(monkeypatch, tmp_path):
-    """如果行政区名称匹配不到，应显式失败。"""
+def test_resolve_administrative_aoi_raises_when_no_polygon_boundary(
+    monkeypatch, tmp_path
+):
+    """如果候选结果没有 polygon，应显式失败。"""
 
-    monkeypatch.setattr(
-        "app.tools.raster.aoi._get_json",
-        lambda _url: {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {"shapeName": "Roma"},
-                    "geometry": {"type": "Point", "coordinates": [12.5, 41.9]},
-                }
-            ],
-            "staticDownloadLink": "https://example.com/ITA_ADM2.zip",
-            "gjDownloadURL": "https://example.com/ITA_ADM2.geojson",
-        },
-    )
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"display_name": "Hangzhou, Zhejiang, China"},
+                "geometry": {"type": "Point", "coordinates": [120.2, 30.3]},
+            }
+        ],
+    }
+
+    monkeypatch.setattr("app.tools.raster.aoi._get_json", lambda _url: geojson)
+
     with pytest.raises(RasterDownloadError, match="AOI boundary not found"):
         resolve_administrative_aoi(
             AOIRequest(
-                name="Milano",
-                iso3="ITA",
-                admin_level="ADM2",
+                query="Hangzhou, Zhejiang, China",
                 output_dir=tmp_path,
             )
         )
 
 
-def test_resolve_administrative_aoi_raises_when_metadata_url_missing(tmp_path):
-    """如果 geoBoundaries 元数据缺少下载地址，应显式失败。"""
+def test_resolve_administrative_aoi_uses_geometry_bbox_when_bbox_missing(
+    monkeypatch, tmp_path
+):
+    """没有 bbox 字段时，应从 geometry 坐标中计算 bbox。"""
 
-    from app.tools.raster.aoi import _require_metadata_url
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"display_name": "Test AOI"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [2, 4],
+                            [6, 4],
+                            [6, 8],
+                            [2, 8],
+                            [2, 4],
+                        ]
+                    ],
+                },
+            }
+        ],
+    }
 
-    with pytest.raises(RasterDownloadError, match="metadata missing URL"):
-        _require_metadata_url({}, "staticDownloadLink")
+    monkeypatch.setattr("app.tools.raster.aoi._get_json", lambda _url: geojson)
+
+    result = resolve_administrative_aoi(
+        AOIRequest(
+            query="Test AOI",
+            output_dir=tmp_path,
+        )
+    )
+
+    assert result.bbox == [2, 4, 6, 8]
