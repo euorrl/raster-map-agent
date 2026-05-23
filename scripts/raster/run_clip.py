@@ -12,9 +12,9 @@ def main() -> None:
     configure_logging("INFO")
 
     request = RasterClipRequest(
-        raster_path=Path("data/speak2/raster/S2B_31UDQ_20240822_0_L2A_B08.tif"),
-        boundary_geojson_path=Path("data/speak2/aoi/Paris_FRA_ADM2.geojson"),
-        output_path=Path("data/speak2/clipped_raster/clipped_B08.tif"),
+        raster_path=Path("data/speak1/raster/S2A_32TNR_20240828_0_L2A_B04.tif"),
+        boundary_geojson_path=Path("data/speak1/aoi/Milano_Lombardy_Italy.geojson"),
+        output_path=Path("data/speak1/clipped_raster/clipped_B04.tif"),
     )
 
     result = clip_raster_to_aoi(request)

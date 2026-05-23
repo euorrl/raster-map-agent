@@ -13,12 +13,12 @@ def main() -> None:
 
     request = RasterDownloadRequest(
         bbox=[
-        8.706096074466394,
-        45.16147199717692,
-        9.551562493000636,
-        45.64266804682561
-    ],
-        start_date="2024-06-01",
+            9.0408867,
+            45.3867381,
+            9.2781103,
+            45.5358482
+        ],
+        start_date="2022-06-01",
         end_date="2024-08-31",
         max_cloud_cover=20,
         required_bands=["B04", "B08"],
