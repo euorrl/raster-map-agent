@@ -46,7 +46,7 @@ def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
     result = resolve_administrative_aoi(
         AOIRequest(
             query="Hangzhou, Zhejiang, China",
-            output_dir=tmp_path,
+            workspace_dir=tmp_path,
         )
     )
 
@@ -58,7 +58,9 @@ def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
     assert result.boundary_geojson_path.endswith("Hangzhou_Zhejiang_China.geojson")
 
     selected_geojson = json.loads(
-        tmp_path.joinpath("Hangzhou_Zhejiang_China.geojson").read_text(encoding="utf-8")
+        tmp_path.joinpath("aoi", "Hangzhou_Zhejiang_China.geojson").read_text(
+            encoding="utf-8"
+        )
     )
     assert selected_geojson["features"][0]["properties"]["type"] == "administrative"
 
@@ -85,7 +87,7 @@ def test_resolve_administrative_aoi_raises_when_no_polygon_boundary(
         resolve_administrative_aoi(
             AOIRequest(
                 query="Hangzhou, Zhejiang, China",
-                output_dir=tmp_path,
+                workspace_dir=tmp_path,
             )
         )
 
@@ -122,7 +124,7 @@ def test_resolve_administrative_aoi_uses_geometry_bbox_when_bbox_missing(
     result = resolve_administrative_aoi(
         AOIRequest(
             query="Test AOI",
-            output_dir=tmp_path,
+            workspace_dir=tmp_path,
         )
     )
 

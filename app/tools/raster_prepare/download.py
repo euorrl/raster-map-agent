@@ -30,7 +30,7 @@ def download_raster_bands(request: RasterDownloadRequest) -> RasterDownloadResul
         request: 栅格数据下载请求。
 
     Returns:
-        下载结果，包含选中的 scene 和各波段本地路径。
+        下载结果，包含通过云量过滤的 scenes 和各波段本地路径列表。
 
     Raises:
         RasterDownloadError: 当没有候选 scene、缺少波段 asset 或下载失败时抛出。
@@ -50,29 +50,29 @@ def download_raster_bands(request: RasterDownloadRequest) -> RasterDownloadResul
             "No raster scenes found for the requested parameters."
         )
 
-    selected_scene = _select_scene(scenes)
-    band_urls = _extract_band_urls(selected_scene, request.required_bands)
-
     request.output_dir.mkdir(parents=True, exist_ok=True)
-    band_paths: dict[str, str] = {}
+    band_paths: dict[str, list[str]] = {band: [] for band in request.required_bands}
 
-    for band, url in band_urls.items():
-        output_path = _build_band_output_path(
-            request.output_dir,
-            selected_scene,
-            band,
-            url,
-        )
-        logger.info(
-            "Downloading raster band=%s scene=%s",
-            band,
-            selected_scene.scene_id,
-        )
-        _download_asset(url, output_path)
-        band_paths[band] = str(output_path)
+    for scene in scenes:
+        band_urls = _extract_band_urls(scene, request.required_bands)
+
+        for band, url in band_urls.items():
+            output_path = _build_band_output_path(
+                request.output_dir,
+                scene,
+                band,
+                url,
+            )
+            logger.info(
+                "Downloading raster band=%s scene=%s",
+                band,
+                scene.scene_id,
+            )
+            _download_asset(url, output_path)
+            band_paths[band].append(str(output_path))
 
     return RasterDownloadResult(
-        selected_scene=selected_scene.scene_id,
+        scene_ids=[scene.scene_id for scene in scenes],
         band_paths=band_paths,
         provider=request.provider,
         collection=request.collection,
@@ -152,18 +152,6 @@ def _parse_stac_item(item: dict[str, Any]) -> RasterScene:
         cloud_cover=properties.get("eo:cloud_cover"),
         assets=assets,
     )
-
-
-def _select_scene(scenes: list[RasterScene]) -> RasterScene:
-    """从候选 scene 中选择云量最低的一景。"""
-
-    return sorted(
-        scenes,
-        key=lambda scene: (
-            scene.cloud_cover is None,
-            scene.cloud_cover if scene.cloud_cover is not None else 101,
-        ),
-    )[0]
 
 
 def _filter_scenes_by_cloud_cover(

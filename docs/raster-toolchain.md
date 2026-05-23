@@ -17,6 +17,22 @@ AOI query
 -> metadata
 ```
 
+## Workspace Directory
+
+当前 raster_prepare 工具链对外只接收一个任务根目录，例如：
+
+```python
+workspace_dir = Path("data/speak1")
+```
+
+工具内部自动使用固定子目录：
+
+```text
+data/speak1/aoi
+data/speak1/raster
+data/speak1/clipped_raster
+```
+
 ## AOI
 
 当前实现：Nominatim / OpenStreetMap。
@@ -26,7 +42,7 @@ AOI query
 ```python
 AOIRequest(
     query="Hangzhou, Zhejiang, China",
-    output_dir=Path("data/aoi"),
+    workspace_dir=Path("data/speak1"),
 )
 ```
 
@@ -74,7 +90,7 @@ RasterDownloadRequest(
     end_date="2024-08-31",
     max_cloud_cover=20,
     required_bands=["B04", "B08"],
-    output_dir=Path("data/raster"),
+    workspace_dir=Path("data/speak1"),
 )
 ```
 
@@ -82,10 +98,10 @@ RasterDownloadRequest(
 
 ```python
 RasterDownloadResult(
-    selected_scene="S2A_...",
+    scene_ids=["S2A_...", "S2B_..."],
     band_paths={
-        "B04": "...B04.tif",
-        "B08": "...B08.tif",
+        "B04": ["...scene1_B04.tif", "...scene2_B04.tif"],
+        "B08": ["...scene1_B08.tif", "...scene2_B08.tif"],
     },
     provider="earth_search",
     collection="sentinel-2-l2a",
@@ -96,14 +112,14 @@ RasterDownloadResult(
 
 - bbox 只用于搜索，不用于裁剪下载内容
 - STAC 搜索返回与 bbox 相交的 scene
-- 当前只选择一个 scene
+- 当前会下载所有通过云量过滤的 scene
+- 当前还没有检测这些 scene 是否完整覆盖 AOI
 - 大 AOI 可能无法被单个 Sentinel-2 tile 完整覆盖
 
 后续需要：
 
-- 搜索多个 scene
-- 选择覆盖 AOI 的 scene 组合
-- 按 band 下载多个 tile
+- 检测通过云量过滤后的 scenes 是否完整覆盖 AOI
+- 将同一 band 的多个 scene/tile 合成为一张待计算 GeoTIFF
 
 ## Mosaic
 
@@ -143,7 +159,8 @@ RasterMosaicResult(
 RasterClipRequest(
     raster_path=Path("mosaic_or_single_band.tif"),
     boundary_geojson_path=Path("aoi.geojson"),
-    output_path=Path("clipped_B04.tif"),
+    workspace_dir=Path("data/speak1"),
+    output_filename="clipped_B04.tif",
 )
 ```
 

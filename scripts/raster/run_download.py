@@ -17,11 +17,11 @@ def main() -> None:
 
     request = RasterDownloadRequest(
         bbox=[9.0408867, 45.3867381, 9.2781103, 45.5358482],
-        start_date="2022-06-01",
+        start_date="2023-06-01",
         end_date="2024-08-31",
         max_cloud_cover=20,
         required_bands=["B04", "B08"],
-        output_dir=Path("data/speak1/raster"),
+        workspace_dir=Path("data/speak2"),
     )
 
     result = download_raster_bands(request)

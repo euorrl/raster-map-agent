@@ -14,7 +14,8 @@ def main() -> None:
     request = RasterClipRequest(
         raster_path=Path("data/speak1/raster/S2A_32TNR_20240828_0_L2A_B08.tif"),
         boundary_geojson_path=Path("data/speak1/aoi/Milano_Lombardy_Italy.geojson"),
-        output_path=Path("data/speak1/clipped_raster/clipped_B08.tif"),
+        workspace_dir=Path("data/speak1"),
+        output_filename="clipped_B08.tif",
     )
 
     result = clip_raster_to_aoi(request)

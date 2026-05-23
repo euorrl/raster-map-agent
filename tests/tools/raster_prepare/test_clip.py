@@ -17,7 +17,7 @@ def test_clip_raster_to_aoi_writes_clipped_geotiff(tmp_path):
 
     raster_path = tmp_path / "source.tif"
     geojson_path = tmp_path / "aoi.geojson"
-    output_path = tmp_path / "clipped.tif"
+    output_path = tmp_path / "clipped_raster" / "clipped.tif"
 
     _write_test_raster(raster_path)
     _write_test_geojson(geojson_path)
@@ -26,7 +26,8 @@ def test_clip_raster_to_aoi_writes_clipped_geotiff(tmp_path):
         RasterClipRequest(
             raster_path=raster_path,
             boundary_geojson_path=geojson_path,
-            output_path=output_path,
+            workspace_dir=tmp_path,
+            output_filename="clipped.tif",
         )
     )
 
@@ -48,7 +49,7 @@ def test_clip_raster_to_aoi_fills_pixels_outside_aoi_with_nodata(tmp_path):
 
     raster_path = tmp_path / "source.tif"
     geojson_path = tmp_path / "aoi.geojson"
-    output_path = tmp_path / "clipped.tif"
+    output_path = tmp_path / "clipped_raster" / "source_clipped.tif"
 
     _write_test_raster(raster_path)
     _write_triangle_geojson(geojson_path)
@@ -57,7 +58,7 @@ def test_clip_raster_to_aoi_fills_pixels_outside_aoi_with_nodata(tmp_path):
         RasterClipRequest(
             raster_path=raster_path,
             boundary_geojson_path=geojson_path,
-            output_path=output_path,
+            workspace_dir=tmp_path,
         )
     )
 
@@ -79,7 +80,7 @@ def test_clip_raster_to_aoi_rejects_missing_raster(tmp_path):
             RasterClipRequest(
                 raster_path=tmp_path / "missing.tif",
                 boundary_geojson_path=geojson_path,
-                output_path=tmp_path / "clipped.tif",
+                workspace_dir=tmp_path,
             )
         )
 

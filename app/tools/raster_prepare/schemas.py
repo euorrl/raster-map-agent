@@ -7,6 +7,9 @@ EARTH_SEARCH_BAND_ASSETS = {
     "B04": "red",
     "B08": "nir",
 }
+AOI_DIRNAME = "aoi"
+RASTER_DIRNAME = "raster"
+CLIPPED_RASTER_DIRNAME = "clipped_raster"
 
 
 class RasterDownloadError(RuntimeError):
@@ -30,8 +33,14 @@ class AOIRequest(BaseModel):
     """
 
     query: str = Field(min_length=1)
-    output_dir: Path
+    workspace_dir: Path
     limit: int = Field(default=5, ge=1, le=10)
+
+    @property
+    def output_dir(self) -> Path:
+        """AOI GeoJSON 自动保存目录。"""
+
+        return self.workspace_dir / AOI_DIRNAME
 
 
 class AOIResult(BaseModel):
@@ -75,10 +84,16 @@ class RasterDownloadRequest(BaseModel):
     end_date: str
     max_cloud_cover: float = Field(ge=0, le=100)
     required_bands: list[str] = Field(min_length=1)
-    output_dir: Path
+    workspace_dir: Path
     provider: str = "earth_search"
     collection: str = EARTH_SEARCH_COLLECTION
     limit: int = Field(default=10, ge=1, le=100)
+
+    @property
+    def output_dir(self) -> Path:
+        """原始 raster 自动保存目录。"""
+
+        return self.workspace_dir / RASTER_DIRNAME
 
     @field_validator("required_bands")
     @classmethod
@@ -107,8 +122,8 @@ class RasterScene(BaseModel):
 class RasterDownloadResult(BaseModel):
     """栅格数据下载结果。"""
 
-    selected_scene: str
-    band_paths: dict[str, str]
+    scene_ids: list[str]
+    band_paths: dict[str, list[str]]
     provider: str
     collection: str
 
@@ -124,7 +139,15 @@ class RasterClipRequest(BaseModel):
 
     raster_path: Path
     boundary_geojson_path: Path
-    output_path: Path
+    workspace_dir: Path
+    output_filename: str | None = None
+
+    @property
+    def output_path(self) -> Path:
+        """裁剪后 raster 自动保存路径。"""
+
+        filename = self.output_filename or f"{self.raster_path.stem}_clipped.tif"
+        return self.workspace_dir / CLIPPED_RASTER_DIRNAME / filename
 
 
 class RasterClipResult(BaseModel):

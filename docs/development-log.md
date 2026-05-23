@@ -117,7 +117,7 @@ workflow 顺序是否清楚
 ```python
 AOIRequest(
     query="Hangzhou, Zhejiang, China",
-    output_dir=Path("data/aoi"),
+    workspace_dir=Path("data/speak1"),
 )
 ```
 

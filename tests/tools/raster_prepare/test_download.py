@@ -12,8 +12,10 @@ from app.tools.raster_prepare import (
 from app.tools.raster_prepare.download import _search_earth_search
 
 
-def test_download_raster_bands_selects_lowest_cloud_scene(monkeypatch, tmp_path):
-    # 验证工具会选择云量最低的 scene，并下载所需波段。
+def test_download_raster_bands_downloads_all_cloud_filtered_scenes(
+    monkeypatch, tmp_path
+):
+    # 验证工具会下载所有通过云量过滤的 scene，并排除高云量 scene。
     scenes = [
         RasterScene(
             scene_id="scene_high_cloud",
@@ -29,6 +31,14 @@ def test_download_raster_bands_selects_lowest_cloud_scene(monkeypatch, tmp_path)
             assets={
                 "red": "https://example.com/low_red.tif",
                 "nir": "https://example.com/low_nir.tif",
+            },
+        ),
+        RasterScene(
+            scene_id="scene_medium_cloud",
+            cloud_cover=12,
+            assets={
+                "red": "https://example.com/medium_red.tif",
+                "nir": "https://example.com/medium_nir.tif",
             },
         ),
     ]
@@ -48,15 +58,17 @@ def test_download_raster_bands_selects_lowest_cloud_scene(monkeypatch, tmp_path)
         end_date="2024-08-31",
         max_cloud_cover=20,
         required_bands=["b04", "b08"],
-        output_dir=tmp_path,
+        workspace_dir=tmp_path,
     )
 
     result = download_raster_bands(request)
 
-    assert result.selected_scene == "scene_low_cloud"
+    assert result.scene_ids == ["scene_low_cloud", "scene_medium_cloud"]
     assert set(result.band_paths) == {"B04", "B08"}
-    assert Path(result.band_paths["B04"]).exists()
-    assert Path(result.band_paths["B08"]).exists()
+    assert len(result.band_paths["B04"]) == 2
+    assert len(result.band_paths["B08"]) == 2
+    assert all(Path(path).exists() for path in result.band_paths["B04"])
+    assert all(Path(path).exists() for path in result.band_paths["B08"])
 
 
 def test_download_raster_bands_rejects_empty_search_result(monkeypatch, tmp_path):
@@ -124,7 +136,7 @@ def test_raster_download_request_rejects_unsupported_band(tmp_path):
             end_date="2024-08-31",
             max_cloud_cover=20,
             required_bands=["B99"],
-            output_dir=tmp_path,
+            workspace_dir=tmp_path,
         )
 
 
@@ -146,14 +158,14 @@ def test_search_earth_search_uses_rfc3339_datetime(monkeypatch, tmp_path):
     assert captured_payload["datetime"] == ("2024-06-01T00:00:00Z/2024-08-31T23:59:59Z")
 
 
-def _build_request(output_dir: Path) -> RasterDownloadRequest:
+def _build_request(workspace_dir: Path) -> RasterDownloadRequest:
     return RasterDownloadRequest(
         bbox=[9.04, 45.35, 9.32, 45.56],
         start_date="2024-06-01",
         end_date="2024-08-31",
         max_cloud_cover=20,
         required_bands=["B04", "B08"],
-        output_dir=output_dir,
+        workspace_dir=workspace_dir,
     )
 
 
