@@ -13,6 +13,10 @@ class RasterDownloadError(RuntimeError):
     """栅格数据下载失败时抛出的错误。"""
 
 
+class RasterClipError(RuntimeError):
+    """栅格裁剪失败时抛出的错误。"""
+
+
 class AOIRequest(BaseModel):
     """行政区 AOI 解析请求。
 
@@ -124,3 +128,25 @@ class RasterDownloadResult(BaseModel):
     band_paths: dict[str, str]
     provider: str
     collection: str
+
+
+class RasterClipRequest(BaseModel):
+    """栅格裁剪请求。
+
+    Attributes:
+        raster_path: 输入 GeoTIFF 路径。当前假设它是单个波段文件。
+        boundary_geojson_path: AOI GeoJSON 路径。
+        output_path: 裁剪后 GeoTIFF 输出路径。
+    """
+
+    raster_path: Path
+    boundary_geojson_path: Path
+    output_path: Path
+
+
+class RasterClipResult(BaseModel):
+    """栅格裁剪结果。"""
+
+    source_raster_path: str
+    boundary_geojson_path: str
+    clipped_raster_path: str
