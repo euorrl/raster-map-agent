@@ -152,7 +152,7 @@ source
 - `RasterClipError`
 - `clip_raster_to_aoi`
 - `scripts/raster/run_clip.py`
-- `tests/tools/raster/test_clip.py`
+- `tests/tools/raster_prepare/test_clip.py`
 
 关键设计：
 

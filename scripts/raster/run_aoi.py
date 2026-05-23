@@ -1,10 +1,14 @@
+# flake8: noqa: E402
 from pathlib import Path
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.tools.raster import AOIRequest, resolve_administrative_aoi  # noqa: E402
+from app.tools.raster_prepare import (
+    AOIRequest,
+    resolve_administrative_aoi,
+)  # noqa: E402
 from app.utils import configure_logging  # noqa: E402
 
 

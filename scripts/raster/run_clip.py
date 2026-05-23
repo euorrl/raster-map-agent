@@ -4,7 +4,7 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.tools.raster import RasterClipRequest, clip_raster_to_aoi  # noqa: E402
+from app.tools.raster_prepare import RasterClipRequest, clip_raster_to_aoi  # noqa: E402
 from app.utils import configure_logging  # noqa: E402
 
 
@@ -12,9 +12,9 @@ def main() -> None:
     configure_logging("INFO")
 
     request = RasterClipRequest(
-        raster_path=Path("data/speak1/raster/S2A_32TNR_20240828_0_L2A_B04.tif"),
+        raster_path=Path("data/speak1/raster/S2A_32TNR_20240828_0_L2A_B08.tif"),
         boundary_geojson_path=Path("data/speak1/aoi/Milano_Lombardy_Italy.geojson"),
-        output_path=Path("data/speak1/clipped_raster/clipped_B04.tif"),
+        output_path=Path("data/speak1/clipped_raster/clipped_B08.tif"),
     )
 
     result = clip_raster_to_aoi(request)

@@ -3,13 +3,13 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.tools.raster import (
+from app.tools.raster_prepare import (
     RasterDownloadError,
     RasterDownloadRequest,
     RasterScene,
     download_raster_bands,
 )
-from app.tools.raster.download import _search_earth_search
+from app.tools.raster_prepare.download import _search_earth_search
 
 
 def test_download_raster_bands_selects_lowest_cloud_scene(monkeypatch, tmp_path):
@@ -34,11 +34,11 @@ def test_download_raster_bands_selects_lowest_cloud_scene(monkeypatch, tmp_path)
     ]
 
     monkeypatch.setattr(
-        "app.tools.raster.download._search_earth_search",
+        "app.tools.raster_prepare.download._search_earth_search",
         lambda _: scenes,
     )
     monkeypatch.setattr(
-        "app.tools.raster.download._download_asset",
+        "app.tools.raster_prepare.download._download_asset",
         _write_mock_asset,
     )
 
@@ -62,7 +62,7 @@ def test_download_raster_bands_selects_lowest_cloud_scene(monkeypatch, tmp_path)
 def test_download_raster_bands_rejects_empty_search_result(monkeypatch, tmp_path):
     # 验证没有候选 scene 时会抛出下载错误。
     monkeypatch.setattr(
-        "app.tools.raster.download._search_earth_search",
+        "app.tools.raster_prepare.download._search_earth_search",
         lambda _: [],
     )
 
@@ -82,7 +82,7 @@ def test_download_raster_bands_rejects_missing_asset(monkeypatch, tmp_path):
         )
     ]
     monkeypatch.setattr(
-        "app.tools.raster.download._search_earth_search",
+        "app.tools.raster_prepare.download._search_earth_search",
         lambda _: scenes,
     )
 
@@ -105,7 +105,7 @@ def test_download_raster_bands_filters_cloud_cover(monkeypatch, tmp_path):
         )
     ]
     monkeypatch.setattr(
-        "app.tools.raster.download._search_earth_search",
+        "app.tools.raster_prepare.download._search_earth_search",
         lambda _: scenes,
     )
 
@@ -136,7 +136,9 @@ def test_search_earth_search_uses_rfc3339_datetime(monkeypatch, tmp_path):
         captured_payload.update(payload)
         return {"features": []}
 
-    monkeypatch.setattr("app.tools.raster.download._post_json", capture_post_json)
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.download._post_json", capture_post_json
+    )
 
     request = _build_request(tmp_path)
 

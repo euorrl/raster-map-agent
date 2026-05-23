@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from app.tools.raster.schemas import AOIRequest, AOIResult, RasterDownloadError
+from app.tools.raster_prepare.schemas import AOIRequest, AOIResult, RasterDownloadError
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)

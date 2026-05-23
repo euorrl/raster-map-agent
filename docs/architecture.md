@@ -87,7 +87,7 @@ answer_node
 当前 raster 工具结构：
 
 ```text
-app/tools/raster/
+app/tools/raster_prepare/
   schemas.py
   aoi.py
   download.py
@@ -118,7 +118,7 @@ app/tools/raster/
 测试按模块组织：
 
 ```text
-tests/tools/raster/
+tests/tools/raster_prepare/
   test_aoi.py
   test_download.py
   test_clip.py

@@ -5,7 +5,7 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
-from app.tools.raster import (
+from app.tools.raster_prepare import (
     RasterClipError,
     RasterClipRequest,
     clip_raster_to_aoi,

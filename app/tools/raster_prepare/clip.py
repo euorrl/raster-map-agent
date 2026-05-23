@@ -7,7 +7,7 @@ import rasterio
 from rasterio.mask import mask
 from rasterio.warp import transform_geom
 
-from app.tools.raster.schemas import (
+from app.tools.raster_prepare.schemas import (
     RasterClipError,
     RasterClipRequest,
     RasterClipResult,

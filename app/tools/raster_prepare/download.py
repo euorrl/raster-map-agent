@@ -9,7 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from app.tools.raster.schemas import (
+from app.tools.raster_prepare.schemas import (
     EARTH_SEARCH_BAND_ASSETS,
     RasterDownloadError,
     RasterDownloadRequest,

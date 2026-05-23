@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from app.tools.raster import AOIRequest, RasterDownloadError, resolve_administrative_aoi
+from app.tools.raster_prepare import (
+    AOIRequest,
+    RasterDownloadError,
+    resolve_administrative_aoi,
+)
 
 
 def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
@@ -37,7 +41,7 @@ def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
         ],
     }
 
-    monkeypatch.setattr("app.tools.raster.aoi._get_json", lambda _url: geojson)
+    monkeypatch.setattr("app.tools.raster_prepare.aoi._get_json", lambda _url: geojson)
 
     result = resolve_administrative_aoi(
         AOIRequest(
@@ -75,7 +79,7 @@ def test_resolve_administrative_aoi_raises_when_no_polygon_boundary(
         ],
     }
 
-    monkeypatch.setattr("app.tools.raster.aoi._get_json", lambda _url: geojson)
+    monkeypatch.setattr("app.tools.raster_prepare.aoi._get_json", lambda _url: geojson)
 
     with pytest.raises(RasterDownloadError, match="AOI boundary not found"):
         resolve_administrative_aoi(
@@ -113,7 +117,7 @@ def test_resolve_administrative_aoi_uses_geometry_bbox_when_bbox_missing(
         ],
     }
 
-    monkeypatch.setattr("app.tools.raster.aoi._get_json", lambda _url: geojson)
+    monkeypatch.setattr("app.tools.raster_prepare.aoi._get_json", lambda _url: geojson)
 
     result = resolve_administrative_aoi(
         AOIRequest(
