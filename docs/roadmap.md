@@ -26,16 +26,17 @@ Agent 基础：
 - AOI 解析
 - Sentinel-2 scene plan
 - 多 scene band asset 下载
+- Shapely coverage diagnostics
 - GeoTIFF clip
 
-## 下一阶段：coverage diagnostics 与 mosaic
+## 下一阶段：mosaic
 
 目标：
 
 ```text
-AOI bbox
+AOI bbox + AOI GeoJSON
 -> 搜索多个 Sentinel-2 scenes
--> 判断候选 scene 是否覆盖 AOI bbox
+-> 判断候选 scene 是否覆盖真实 AOI GeoJSON
 -> 下载规划选中的 tile / scene
 -> 每个 band 分别 mosaic
 ```
@@ -46,14 +47,17 @@ AOI bbox
 搜索候选 scenes
 过滤云量
 按空间分组保留候选 scenes
-生成 coverage diagnostics
+读取 coverage diagnostics
 下载通过规划的 required bands
 按 band 调用 rasterio merge
 输出 mosaic_B04.tif / mosaic_B08.tif
 ```
 
-暂不追求严格 polygon union 覆盖检测，先做 bbox 级 coverage diagnostics，
-作为后续局部 ReAct 的 observation。
+coverage diagnostics 已使用 Shapely 对 scene footprint union 和真实 AOI
+GeoJSON geometry 进行判断。下一步重点是把通过规划的多个 scene/tile 按 band 合并。
+
+当前 scene plan 默认 `limit=100`，先尽量拿到足够候选；下载量仍由最终
+plan 控制，而不是直接下载全部搜索结果。
 
 ## 下一阶段：指数计算与渲染
 
@@ -172,3 +176,14 @@ V2 是产品化与标准化阶段：
 - 多 AOI provider
 - 多数据源
 - 更多指数和专题图产品
+## 当前 Coverage 规则更新
+
+scene plan 仍然使用 AOI bbox 进行 STAC 搜索，但 coverage diagnostics 已改为读取
+真实 AOI GeoJSON。后续 ReAct observation 应基于：
+
+```text
+scene footprint union 对 AOI GeoJSON geometry 的覆盖率
+```
+
+如果 AOI GeoJSON 缺失或无效，diagnostics 会返回 `unknown` 且
+`is_retriable=false`，表示当前不是可通过日期、云量或 limit 调整解决的问题。

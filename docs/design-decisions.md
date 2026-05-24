@@ -150,7 +150,7 @@ bbox 搜索到的是与区域相交的 scene/tile
 download -> mosaic -> clip
 ```
 
-## scene plan 需要 coverage diagnostics
+## scene plan 使用 Shapely coverage diagnostics
 
 Sentinel-2 单 tile 大约 100km x 100km。
 
@@ -169,8 +169,14 @@ scene_plan -> download
 ```
 
 `scene_plan` 负责候选累积、分组和选择；`download` 只负责按 plan 下载。
-下一步需要在 scene plan 里加入 coverage diagnostics，作为后续局部 ReAct
-的 observation。
+scene plan 会用 Shapely 将选中 scene 的 footprint 做 union，并与真实 AOI
+GeoJSON geometry 比较覆盖比例。诊断结果写入 `RasterScenePlanResult.diagnostics`，
+作为后续局部 ReAct 的 observation。
+
+diagnostics 使用 `is_retriable` 明确告诉 ReAct 是否继续循环：
+
+- `true`：当前问题可以通过日期、云量或 limit 调参继续尝试
+- `false`：当前问题不是 V1 支持的可调参数问题，应结束 ReAct 并返回说明
 
 ## Scene 选择算法思路
 
@@ -202,7 +208,11 @@ z = 时间
 再 clip
 ```
 
-后续 coverage diagnostics 先做 bbox 级判断，不急于实现严格 polygon union。
+scene plan 默认 `limit=100`，用单次查询上限尽量增加候选覆盖面；最终
+下载量仍由每组候选上限和每组选中数量控制。
+
+当前 coverage diagnostics 已经使用真实 scene footprint union 和真实 AOI
+GeoJSON geometry。bbox 只保留为 STAC 搜索参数，不再作为 coverage 判断对象。
 
 ## Clip 的 nodata 策略
 
@@ -236,3 +246,25 @@ clip 工具只处理：
 多 band 裁剪由上层 pipeline 循环调用。
 
 这样工具更原子，测试更简单，也方便后续接 mosaic。
+## Coverage 使用真实 AOI GeoJSON
+
+STAC 搜索阶段继续使用 AOI bbox。bbox 的职责只是粗筛候选 scene：
+
+```text
+搜索与 AOI 外接矩形相交的 scene
+```
+
+但 coverage diagnostics 不再使用 bbox polygon。原因是 bbox 会包含大量真实
+AOI 外部区域，尤其城市、省份等不规则边界会导致 coverage ratio 偏低。
+
+当前规则是：
+
+```text
+scene footprint union ∩ AOI GeoJSON geometry
+/
+AOI GeoJSON geometry
+```
+
+如果缺少 `boundary_geojson_path`，或 GeoJSON 无法解析，诊断结果会标记为
+`unknown`，并设置 `is_retriable=false`。这表示问题不是扩大日期、放宽云量或
+增加 limit 能解决的，后续 ReAct 应停止当前数据下载调参循环并返回明确原因。

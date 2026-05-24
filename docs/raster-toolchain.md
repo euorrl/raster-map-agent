@@ -88,6 +88,7 @@ scene_plan.py
 -> 按云量过滤
 -> 每个空间分组最多保留 5 个候选 scene
 -> 每个空间分组选择云量最低的 3 个 scene
+-> 使用 Shapely 检查选中 scene footprints 对真实 AOI GeoJSON 的覆盖
 -> 生成 RasterScenePlanResult
 
 download.py
@@ -118,6 +119,8 @@ RasterScenePlanRequest(
     max_cloud_cover=20,
     required_bands=["B04", "B08"],
     data_source="sentinel2",
+    boundary_geojson_path=Path("data/speak1/aoi/Hangzhou_Zhejiang_China.geojson"),
+    limit=100,
 )
 
 RasterDownloadRequest(
@@ -146,12 +149,16 @@ RasterDownloadResult(
 - bbox 只用于搜索，不用于裁剪下载内容
 - STAC 搜索返回与 bbox 相交的 scene
 - 当前会下载 `RasterScenePlanResult` 中选中的 scene asset
-- 当前还没有检测这些 scene 是否完整覆盖 AOI
+- coverage diagnostics 使用 scene footprint union 与真实 AOI GeoJSON geometry 对比
+- diagnostics 通过 `is_retriable` 告诉 ReAct 是否应该继续调参
 - 大 AOI 可能无法被单个 Sentinel-2 tile 完整覆盖
+
+当前默认 `limit=100`。这是 Earth Search 单次请求允许的上限，用来降低
+STAC 返回结果被少数 tile 或少数日期占满的风险；真正进入下载的 scene
+仍由每组候选上限和 `selected_scenes_per_group` 控制。
 
 后续需要：
 
-- 对规划选中的 scenes 做 bbox 级 coverage diagnostics
 - 将同一 band 的多个 scene/tile 合成为一张待计算 GeoTIFF
 
 ## Mosaic
@@ -277,3 +284,21 @@ resolve AOI
 ```
 
 prepare pipeline 是工具链和 Agent workflow 之间的桥。
+
+## Coverage Diagnostics 当前规则
+
+STAC 搜索仍然使用 `bbox`，因为它是最稳定、最简单的候选 scene 粗筛方式。
+
+coverage diagnostics 不再使用 AOI bbox polygon 计算覆盖率，而是读取
+`RasterScenePlanRequest.boundary_geojson_path` 指向的真实 AOI GeoJSON，并用：
+
+```text
+AOI GeoJSON geometry
+scene footprint union
+```
+
+计算覆盖比例。
+
+如果 `boundary_geojson_path` 缺失或 GeoJSON 无法解析，diagnostics 会返回
+`coverage_status="unknown"`，并通过 `failure_reason` 写明原因。这个问题不是
+V1 支持的 ReAct 调参问题，因此 `is_retriable=false`。

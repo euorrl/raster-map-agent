@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 from pydantic import ValidationError
@@ -9,6 +10,7 @@ from app.tools.raster_prepare import (
     RasterDownloadRequest,
     RasterScene,
     RasterSceneCandidateStore,
+    RasterScenePlanDiagnostics,
     RasterScenePlanResult,
     RasterScenePlanRequest,
     build_raster_scene_plan,
@@ -49,6 +51,13 @@ def test_download_raster_assets_downloads_planned_assets(monkeypatch, tmp_path):
                     url="https://example.com/medium_nir.tif",
                 ),
             ],
+            diagnostics=RasterScenePlanDiagnostics(
+                coverage_status="covered",
+                coverage_ratio=1,
+                is_retriable=False,
+                message="Selected scenes fully cover the AOI geometry.",
+                selected_scene_count=2,
+            ),
             data_source="sentinel2",
             provider="earth_search",
             collection="sentinel-2-l2a",
@@ -284,9 +293,104 @@ def test_build_raster_scene_plan_accumulates_existing_store(monkeypatch, tmp_pat
     ]
 
 
-def _build_request(_workspace_dir: Path) -> RasterScenePlanRequest:
+def test_build_raster_scene_plan_marks_covered_scene_plan(monkeypatch, tmp_path):
+    # 验证选中的 scene footprint 完整覆盖真实 AOI 时，诊断结果为 covered。
+    scenes = [_build_scene("S2A_32TMR_20240801_0_L2A", 5, _polygon(0, 0, 10, 10))]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+    request = _build_request(tmp_path, bbox=[0, 0, 10, 10])
+
+    plan = build_raster_scene_plan(request)
+
+    assert plan.diagnostics.coverage_status == "covered"
+    assert plan.diagnostics.coverage_ratio == pytest.approx(1)
+    assert plan.diagnostics.is_retriable is False
+    assert plan.diagnostics.failure_reason is None
+
+
+def test_build_raster_scene_plan_detects_footprint_gap(monkeypatch, tmp_path):
+    # 验证 coverage 使用真实 AOI 和 scene footprint union。
+    scenes = [
+        _build_scene("S2A_32TMR_20240801_0_L2A", 5, _polygon(0, 0, 4, 10)),
+        _build_scene("S2A_32TMR_20240802_0_L2A", 6, _polygon(6, 0, 10, 10)),
+    ]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+    request = _build_request(tmp_path, bbox=[0, 0, 10, 10])
+
+    plan = build_raster_scene_plan(request)
+
+    assert plan.diagnostics.coverage_status == "not_covered"
+    assert plan.diagnostics.coverage_ratio == pytest.approx(0.8)
+    assert plan.diagnostics.is_retriable is True
+    assert plan.diagnostics.failure_reason == "insufficient_spatial_coverage"
+    assert plan.diagnostics.suggested_actions == [
+        "expand_date_range",
+        "increase_max_cloud_cover",
+        "increase_limit",
+    ]
+
+
+def test_build_raster_scene_plan_reports_missing_aoi_geometry(monkeypatch, tmp_path):
+    scenes = [_build_scene("S2A_32TMR_20240801_0_L2A", 5, _polygon(0, 0, 10, 10))]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+    request = _build_request(tmp_path, bbox=[0, 0, 10, 10], include_boundary=False)
+
+    plan = build_raster_scene_plan(request)
+
+    assert plan.diagnostics.coverage_status == "unknown"
+    assert plan.diagnostics.coverage_ratio == 0
+    assert plan.diagnostics.failure_reason == "missing_aoi_geometry"
+    assert plan.diagnostics.is_retriable is False
+    assert plan.diagnostics.suggested_actions == []
+
+
+def test_build_raster_scene_plan_reports_missing_geometry(monkeypatch, tmp_path):
+    # 验证缺少 footprint geometry 时，返回可供 ReAct 使用的 unknown 诊断。
+    scenes = [
+        RasterScene(
+            scene_id="S2A_32TMR_20240801_0_L2A",
+            cloud_cover=5,
+            assets={
+                "red": "https://example.com/red.tif",
+                "nir": "https://example.com/nir.tif",
+            },
+        )
+    ]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+
+    plan = build_raster_scene_plan(_build_request(tmp_path))
+
+    assert plan.diagnostics.coverage_status == "unknown"
+    assert plan.diagnostics.failure_reason == "missing_scene_geometry"
+    assert plan.diagnostics.is_retriable is False
+    assert plan.diagnostics.suggested_actions == []
+    assert plan.diagnostics.missing_geometry_scene_ids == ["S2A_32TMR_20240801_0_L2A"]
+
+
+def _build_request(
+    _workspace_dir: Path,
+    bbox: list[float] | None = None,
+    include_boundary: bool = True,
+) -> RasterScenePlanRequest:
+    bbox = bbox or [9.04, 45.35, 9.32, 45.56]
+    boundary_geojson_path = None
+    if include_boundary:
+        boundary_geojson_path = _write_geojson(_workspace_dir, _polygon(*bbox))
+
     return RasterScenePlanRequest(
-        bbox=[9.04, 45.35, 9.32, 45.56],
+        bbox=bbox,
+        boundary_geojson_path=boundary_geojson_path,
         start_date="2024-06-01",
         end_date="2024-08-31",
         max_cloud_cover=20,
@@ -294,15 +398,46 @@ def _build_request(_workspace_dir: Path) -> RasterScenePlanRequest:
     )
 
 
-def _build_scene(scene_id: str, cloud_cover: float) -> RasterScene:
+def _build_scene(
+    scene_id: str,
+    cloud_cover: float,
+    geometry: dict | None = None,
+) -> RasterScene:
+    if geometry is None:
+        geometry = _polygon(9, 45, 10, 46)
+
     return RasterScene(
         scene_id=scene_id,
         cloud_cover=cloud_cover,
+        bbox=geometry["coordinates"][0][0] + geometry["coordinates"][0][2],
+        geometry=geometry,
         assets={
             "red": f"https://example.com/{scene_id}_red.tif",
             "nir": f"https://example.com/{scene_id}_nir.tif",
         },
     )
+
+
+def _polygon(min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> dict:
+    return {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [min_lon, min_lat],
+                [max_lon, min_lat],
+                [max_lon, max_lat],
+                [min_lon, max_lat],
+                [min_lon, min_lat],
+            ]
+        ],
+    }
+
+
+def _write_geojson(tmp_path: Path, geometry: dict) -> Path:
+    path = tmp_path / "aoi.geojson"
+    geojson = {"type": "Feature", "properties": {}, "geometry": geometry}
+    path.write_text(json.dumps(geojson), encoding="utf-8")
+    return path
 
 
 def _write_mock_asset(url: str, output_path: Path) -> None:

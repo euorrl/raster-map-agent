@@ -105,24 +105,27 @@ class RasterScenePlanRequest(BaseModel):
     """栅格 scene 规划请求。
 
     Attributes:
-        bbox: 查询范围，顺序为 ``[min_lon, min_lat, max_lon, max_lat]``。
+        bbox: STAC 查询范围，顺序为 ``[min_lon, min_lat, max_lon, max_lat]``。
+        boundary_geojson_path: AOI GeoJSON 路径，用于 coverage 检测。
         start_date: 查询开始日期，格式为 ``YYYY-MM-DD``。
         end_date: 查询结束日期，格式为 ``YYYY-MM-DD``。
         max_cloud_cover: 允许的最大云量百分比。
         required_bands: 需要下载的波段，例如 ``B04`` 和 ``B08``。
         data_source: 上游 plan 选择的数据源。V1 先只实现 ``sentinel2``。
-        limit: 最多请求的候选 scene 数量。
+        limit: 最多请求的候选 scene 数量。V1 默认请求 100 条，
+            避免返回结果被少数空间分组占满。
         max_candidate_scenes_per_group: 每个空间分组最多保留的候选 scene 数量。
         selected_scenes_per_group: 每个空间分组最终进入下载 plan 的 scene 数量。
     """
 
     bbox: list[float] = Field(min_length=4, max_length=4)
+    boundary_geojson_path: Path | None = None
     start_date: str
     end_date: str
     max_cloud_cover: float = Field(ge=0, le=100)
     required_bands: list[str] = Field(min_length=1)
     data_source: str = DEFAULT_RASTER_DATA_SOURCE
-    limit: int = Field(default=10, ge=1, le=100)
+    limit: int = Field(default=100, ge=1, le=100)
     max_candidate_scenes_per_group: int = Field(default=5, ge=1, le=20)
     selected_scenes_per_group: int = Field(default=3, ge=1, le=10)
 
@@ -165,6 +168,8 @@ class RasterScene(BaseModel):
     scene_id: str
     datetime: str | None = None
     cloud_cover: float | None = None
+    bbox: list[float] | None = None
+    geometry: dict | None = None
     assets: dict[str, str] = Field(default_factory=dict)
 
 
@@ -189,11 +194,25 @@ class RasterDownloadAsset(BaseModel):
     url: str
 
 
+class RasterScenePlanDiagnostics(BaseModel):
+    """scene plan 诊断信息，用于后续 ReAct observation。"""
+
+    coverage_status: str
+    coverage_ratio: float
+    is_retriable: bool = False
+    failure_reason: str | None = None
+    message: str
+    suggested_actions: list[str] = Field(default_factory=list)
+    selected_scene_count: int = 0
+    missing_geometry_scene_ids: list[str] = Field(default_factory=list)
+
+
 class RasterScenePlanResult(BaseModel):
     """栅格 scene 规划结果。"""
 
     scene_ids: list[str]
     assets: list[RasterDownloadAsset]
+    diagnostics: RasterScenePlanDiagnostics
     data_source: str
     provider: str
     collection: str

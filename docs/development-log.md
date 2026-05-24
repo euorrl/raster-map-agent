@@ -84,6 +84,7 @@ workflow 顺序是否清楚
 - scene plan 与下载执行解耦
 - 多次查询结果可累积到候选 store
 - 候选 scene 按空间分组并选择低云量 scene
+- 使用 Shapely 生成 scene plan coverage diagnostics
 - Sentinel-2 L2A `B04` / `B08` 下载
 - RFC3339 datetime 修正
 - Earth Search 400 错误信息增强
@@ -93,7 +94,7 @@ workflow 顺序是否清楚
 
 - bbox 当前只用于搜索，不代表只下载 bbox 内数据
 - STAC 搜索返回的是与 bbox 相交的 scene，不保证完整覆盖 bbox
-- 多 scene 下载已经具备雏形，但还需要 coverage diagnostics 和 mosaic
+- 多 scene 下载和 coverage diagnostics 已经具备雏形，下一步需要 mosaic
 
 ## 阶段 5：AOI 边界解析探索
 
@@ -185,8 +186,7 @@ nodata 策略明确
 下一座关键桥是：
 
 ```text
-coverage diagnostics + tile 合并
+tile 合并
 ```
 
-这会让工具链先判断 scene plan 是否足够覆盖 AOI，再把同一 band 的
-多个 tile 合并为一张待计算 GeoTIFF。
+这会把同一 band 的多个 tile 合并为一张待计算 GeoTIFF。

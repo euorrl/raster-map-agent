@@ -6,6 +6,9 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from shapely.geometry import shape
+from shapely.ops import unary_union
+
 from app.tools.raster_prepare.schemas import (
     DEFAULT_RASTER_DATA_SOURCE,
     RasterDownloadAsset,
@@ -13,6 +16,7 @@ from app.tools.raster_prepare.schemas import (
     RasterScene,
     RasterSceneCandidateGroup,
     RasterSceneCandidateStore,
+    RasterScenePlanDiagnostics,
     RasterScenePlanResult,
     RasterScenePlanRequest,
     get_raster_data_source_config,
@@ -22,6 +26,7 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 EARTH_SEARCH_SEARCH_URL = "https://earth-search.aws.element84.com/v1/search"
+COVERAGE_COMPLETE_THRESHOLD = 0.999
 
 
 def build_raster_scene_plan(
@@ -44,6 +49,7 @@ def build_raster_scene_plan(
         required_bands=request.required_bands,
         selected_scenes_per_group=request.selected_scenes_per_group,
         data_source=request.data_source,
+        boundary_geojson_path=request.boundary_geojson_path,
     )
 
 
@@ -82,6 +88,7 @@ def build_raster_scene_plan_from_candidates(
     required_bands: list[str],
     selected_scenes_per_group: int,
     data_source: str = DEFAULT_RASTER_DATA_SOURCE,
+    boundary_geojson_path: str | None = None,
 ) -> RasterScenePlanResult:
     """从候选池中选择每组云量最低的 scenes，并生成下载计划。"""
 
@@ -111,6 +118,10 @@ def build_raster_scene_plan_from_candidates(
     return RasterScenePlanResult(
         scene_ids=[scene.scene_id for scene in selected_scenes],
         assets=assets,
+        diagnostics=_build_coverage_diagnostics(
+            selected_scenes,
+            boundary_geojson_path,
+        ),
         data_source=config.data_source,
         provider=config.provider,
         collection=config.collection,
@@ -189,6 +200,8 @@ def _parse_stac_item(item: dict[str, Any]) -> RasterScene:
         scene_id=item["id"],
         datetime=properties.get("datetime"),
         cloud_cover=properties.get("eo:cloud_cover"),
+        bbox=item.get("bbox"),
+        geometry=item.get("geometry"),
         assets=assets,
     )
 
@@ -265,3 +278,149 @@ def _extract_band_urls(
         band_urls[band] = asset_url
 
     return band_urls
+
+
+def _build_coverage_diagnostics(
+    selected_scenes: list[RasterScene],
+    boundary_geojson_path: str | None,
+) -> RasterScenePlanDiagnostics:
+    """用 Shapely 检查选中 scene footprints 是否覆盖真实 AOI。"""
+
+    if boundary_geojson_path is None:
+        return RasterScenePlanDiagnostics(
+            coverage_status="unknown",
+            coverage_ratio=0,
+            is_retriable=False,
+            failure_reason="missing_aoi_geometry",
+            message="AOI GeoJSON path is missing, so scene coverage cannot be checked.",
+            suggested_actions=[],
+            selected_scene_count=len(selected_scenes),
+        )
+
+    try:
+        aoi_geometry = _load_aoi_geometry(boundary_geojson_path)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        return RasterScenePlanDiagnostics(
+            coverage_status="unknown",
+            coverage_ratio=0,
+            is_retriable=False,
+            failure_reason="invalid_aoi_geometry",
+            message=f"AOI GeoJSON cannot be used for coverage check: {error}",
+            suggested_actions=[],
+            selected_scene_count=len(selected_scenes),
+        )
+
+    scene_geometries = []
+    missing_geometry_scene_ids = []
+
+    for scene in selected_scenes:
+        if not scene.geometry:
+            missing_geometry_scene_ids.append(scene.scene_id)
+            continue
+
+        try:
+            geometry = shape(scene.geometry)
+        except (TypeError, ValueError):
+            missing_geometry_scene_ids.append(scene.scene_id)
+            continue
+
+        if geometry.is_empty:
+            missing_geometry_scene_ids.append(scene.scene_id)
+            continue
+
+        scene_geometries.append(geometry)
+
+    if not scene_geometries:
+        return RasterScenePlanDiagnostics(
+            coverage_status="unknown",
+            coverage_ratio=0,
+            is_retriable=False,
+            failure_reason="missing_scene_geometry",
+            message="Selected scenes do not include usable footprint geometry.",
+            suggested_actions=[],
+            selected_scene_count=len(selected_scenes),
+            missing_geometry_scene_ids=missing_geometry_scene_ids,
+        )
+
+    union_geometry = unary_union(scene_geometries)
+    coverage_ratio = _coverage_ratio(aoi_geometry, union_geometry)
+
+    if missing_geometry_scene_ids:
+        return RasterScenePlanDiagnostics(
+            coverage_status="unknown",
+            coverage_ratio=coverage_ratio,
+            is_retriable=False,
+            failure_reason="missing_scene_geometry",
+            message=(
+                "Some selected scenes are missing usable footprint geometry, "
+                "so coverage cannot be trusted."
+            ),
+            suggested_actions=[],
+            selected_scene_count=len(selected_scenes),
+            missing_geometry_scene_ids=missing_geometry_scene_ids,
+        )
+
+    if coverage_ratio >= COVERAGE_COMPLETE_THRESHOLD:
+        return RasterScenePlanDiagnostics(
+            coverage_status="covered",
+            coverage_ratio=coverage_ratio,
+            is_retriable=False,
+            message="Selected scenes fully cover the AOI geometry.",
+            selected_scene_count=len(selected_scenes),
+        )
+
+    return RasterScenePlanDiagnostics(
+        coverage_status="not_covered",
+        coverage_ratio=coverage_ratio,
+        is_retriable=True,
+        failure_reason="insufficient_spatial_coverage",
+        message=(
+            "Selected scenes do not fully cover the AOI geometry. "
+            "Try expanding date range, relaxing cloud cover, or increasing limit."
+        ),
+        suggested_actions=[
+            "expand_date_range",
+            "increase_max_cloud_cover",
+            "increase_limit",
+        ],
+        selected_scene_count=len(selected_scenes),
+    )
+
+
+def _load_aoi_geometry(boundary_geojson_path: str):
+    """从 AOI GeoJSON 文件读取真实 AOI geometry。"""
+
+    with open(boundary_geojson_path, encoding="utf-8") as file:
+        geojson = json.load(file)
+
+    geojson_type = geojson.get("type")
+
+    if geojson_type == "FeatureCollection":
+        geometries = [
+            shape(feature["geometry"])
+            for feature in geojson.get("features", [])
+            if feature.get("geometry")
+        ]
+        if not geometries:
+            raise ValueError("FeatureCollection does not contain geometry.")
+
+        geometry = unary_union(geometries)
+    elif geojson_type == "Feature":
+        geometry = shape(geojson["geometry"])
+    else:
+        geometry = shape(geojson)
+
+    if geometry.is_empty:
+        raise ValueError("AOI geometry is empty.")
+
+    return geometry
+
+
+def _coverage_ratio(aoi_geometry, union_geometry) -> float:
+    """计算 scene union 对真实 AOI geometry 的覆盖比例。"""
+
+    if aoi_geometry.area == 0:
+        return 0
+
+    covered_area = union_geometry.intersection(aoi_geometry).area
+    return min(covered_area / aoi_geometry.area, 1)
