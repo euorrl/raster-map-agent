@@ -79,6 +79,7 @@ workflow 顺序是否清楚
 - `RasterScene`
 - `RasterSceneCandidateStore`
 - `RasterDownloadResult`
+- `data_source` 接口参数，V1 固定为 `sentinel2`，作为后续扩展预留协议
 - Earth Search STAC 搜索
 - Sentinel-2 L2A `B04` / `B08` 下载
 - RFC3339 datetime 修正
@@ -136,7 +137,6 @@ AOIRequest(
 boundary_geojson_path
 bbox
 area_km2
-spatial_scale
 source
 ```
 

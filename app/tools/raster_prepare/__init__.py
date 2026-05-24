@@ -12,6 +12,7 @@ from app.tools.raster_prepare.schemas import (
     RasterClipError,
     RasterClipRequest,
     RasterClipResult,
+    RasterDataSourceConfig,
     RasterDownloadAsset,
     RasterDownloadError,
     RasterDownloadRequest,
@@ -21,6 +22,7 @@ from app.tools.raster_prepare.schemas import (
     RasterSceneCandidateStore,
     RasterScenePlanResult,
     RasterScenePlanRequest,
+    get_raster_data_source_config,
 )
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "RasterClipError",
     "RasterClipRequest",
     "RasterClipResult",
+    "RasterDataSourceConfig",
     "RasterDownloadAsset",
     "RasterDownloadError",
     "RasterDownloadRequest",
@@ -42,6 +45,7 @@ __all__ = [
     "build_raster_scene_plan_from_candidates",
     "clip_raster_to_aoi",
     "download_raster_assets",
+    "get_raster_data_source_config",
     "resolve_administrative_aoi",
     "update_raster_scene_candidates",
 ]

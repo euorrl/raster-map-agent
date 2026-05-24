@@ -14,19 +14,17 @@ logger = get_logger(__name__)
 
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_USER_AGENT = "raster-map-agent/0.1 portfolio demo"
-LOCAL_SCALE_MAX_AREA_KM2 = 5_000
-REGIONAL_SCALE_MAX_AREA_KM2 = 200_000
 KM_PER_DEGREE_LAT = 111.32
 
 
 def resolve_administrative_aoi(request: AOIRequest) -> AOIResult:
-    """用 Nominatim 查询 AOI 边界，并返回栅格下载/裁剪需要的信息。
+    """用 Nominatim 查询 AOI 边界，并返回下载和裁剪需要的信息。
 
     Args:
-        request: 包含消歧地点查询字符串和输出目录的 AOI 请求。
+        request: 包含地点查询字符串和工作目录的 AOI 请求。
 
     Returns:
-        包含目标 AOI GeoJSON、bbox、面积和尺度分类的结果。
+        包含目标 AOI GeoJSON、bbox、估算面积和来源的结果。
     """
 
     output_dir = request.output_dir
@@ -47,21 +45,13 @@ def resolve_administrative_aoi(request: AOIRequest) -> AOIResult:
 
     bbox = _geometry_bbox(feature)
     area_km2 = _estimate_bbox_area_km2(bbox)
-    spatial_scale = _classify_spatial_scale(area_km2)
-    logger.info(
-        "Resolved AOI name=%s bbox=%s area_km2=%.2f spatial_scale=%s",
-        name,
-        bbox,
-        area_km2,
-        spatial_scale,
-    )
+    logger.info("Resolved AOI name=%s bbox=%s area_km2=%.2f", name, bbox, area_km2)
 
     return AOIResult(
         name=name,
         boundary_geojson_path=str(boundary_geojson_path),
         bbox=bbox,
         area_km2=area_km2,
-        spatial_scale=spatial_scale,
         source="nominatim",
     )
 
@@ -164,7 +154,7 @@ def _iter_coordinates(value):
 
 
 def _estimate_bbox_area_km2(bbox: list[float]) -> float:
-    """使用经纬度 bbox 估算面积，作为尺度判断的粗略依据。"""
+    """使用经纬度 bbox 估算面积，只作为 metadata 记录。"""
 
     min_lon, min_lat, max_lon, max_lat = bbox
     center_lat = (min_lat + max_lat) / 2
@@ -174,18 +164,6 @@ def _estimate_bbox_area_km2(bbox: list[float]) -> float:
     height_km = (max_lat - min_lat) * KM_PER_DEGREE_LAT
 
     return abs(width_km * height_km)
-
-
-def _classify_spatial_scale(area_km2: float) -> str:
-    """根据面积粗分 AOI 空间尺度。"""
-
-    if area_km2 <= LOCAL_SCALE_MAX_AREA_KM2:
-        return "local"
-
-    if area_km2 <= REGIONAL_SCALE_MAX_AREA_KM2:
-        return "regional"
-
-    return "continental"
 
 
 def _build_boundary_geojson_name(name: str) -> str:

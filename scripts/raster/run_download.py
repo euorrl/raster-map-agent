@@ -21,28 +21,20 @@ def main() -> None:
     store = RasterSceneCandidateStore()
     plan_requests = (
         RasterScenePlanRequest(
-            bbox=[
-    9.0408867,
-    45.3867381,
-    9.2781103,
-    45.5358482
-  ],
+            bbox=[9.0408867, 45.3867381, 9.2781103, 45.5358482],
             start_date="2024-06-01",
             end_date="2024-08-31",
             max_cloud_cover=20,
             required_bands=["B04", "B08"],
+            data_source="sentinel2",
         ),
         RasterScenePlanRequest(
-            bbox=[
-    9.0408867,
-    45.3867381,
-    9.2781103,
-    45.5358482
-  ],
+            bbox=[9.0408867, 45.3867381, 9.2781103, 45.5358482],
             start_date="2023-06-01",
             end_date="2023-08-31",
             max_cloud_cover=20,
             required_bands=["B04", "B08"],
+            data_source="sentinel2",
         ),
     )
 

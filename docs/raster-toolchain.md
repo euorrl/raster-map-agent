@@ -54,7 +54,6 @@ AOIResult(
     boundary_geojson_path="data/speak1/aoi/Hangzhou_Zhejiang_China.geojson",
     bbox=[118.3396948, 29.1888286, 120.7254851, 30.5648514],
     area_km2=35275.45,
-    spatial_scale="regional",
     source="nominatim",
 )
 ```
@@ -66,7 +65,7 @@ AOIResult(
 - 只接受 `Polygon` 或 `MultiPolygon`
 - 保存为本地 GeoJSON
 - 计算 bbox
-- 估算面积和空间尺度
+- 估算 bbox 面积，作为 metadata 记录
 
 LLM planner 的任务：
 
@@ -98,6 +97,17 @@ download.py
 
 当前实现：Earth Search STAC + COG。
 
+V1 数据源边界：
+
+```text
+data_source="sentinel2"
+provider="earth_search"
+collection="sentinel-2-l2a"
+```
+
+`data_source` 是给上游 planner/ReAct 使用的稳定协议字段。当前只支持
+`sentinel2`，不自动切换 Landsat、MODIS 或其他 provider。
+
 输入：
 
 ```python
@@ -107,6 +117,7 @@ RasterScenePlanRequest(
     end_date="2024-08-31",
     max_cloud_cover=20,
     required_bands=["B04", "B08"],
+    data_source="sentinel2",
 )
 
 RasterDownloadRequest(
@@ -124,6 +135,7 @@ RasterDownloadResult(
         "B04": ["...scene1_B04.tif", "...scene2_B04.tif"],
         "B08": ["...scene1_B08.tif", "...scene2_B08.tif"],
     },
+    data_source="sentinel2",
     provider="earth_search",
     collection="sentinel-2-l2a",
 )

@@ -54,6 +54,24 @@ V2 目标：
 - 多 provider 策略
 - 用户交互式修正
 
+## V1 数据源固定为 Sentinel-2
+
+当前 `raster_prepare` 保留 `data_source` 参数，但 V1 只接受：
+
+```text
+data_source="sentinel2"
+```
+
+原因：
+
+- Sentinel-2 L2A 已能满足 V1 的 NDVI 本地流程验证
+- Earth Search 中没有适合直接替代 MODIS 级粗分辨率 NDVI 的同源数据
+- Landsat 能降低部分下载压力，但覆盖范围并非数量级变化，暂时不解决大 AOI 的根本问题
+- 过早加入多 provider 会让 STAC endpoint、asset 命名和下载规则变复杂
+
+因此，V1 的 ReAct 优先调整日期、云量和 limit；如果 AOI 过大，则通过
+diagnostics 明确反馈当前 V1 流程不适合，而不是自动切换 provider。
+
 ## AOI 数据源：从 geoBoundaries 切到 Nominatim
 
 最初选择 geoBoundaries，因为它有清晰的行政区 API 和 GeoJSON。
@@ -90,7 +108,6 @@ LLM 负责把用户地点整理成：
 boundary_geojson_path
 bbox
 area_km2
-spatial_scale
 source
 ```
 
@@ -98,7 +115,7 @@ source
 
 - download 使用 bbox
 - clip 使用 boundary_geojson_path
-- strategy 使用 spatial_scale
+- strategy 使用全局 plan 的 data_source
 
 ## GeoJSON 作为主边界格式
 

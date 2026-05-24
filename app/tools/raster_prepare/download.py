@@ -48,6 +48,7 @@ def download_raster_assets(request: RasterDownloadRequest) -> RasterDownloadResu
     return RasterDownloadResult(
         scene_ids=request.plan.scene_ids,
         band_paths=band_paths,
+        data_source=request.plan.data_source,
         provider=request.plan.provider,
         collection=request.plan.collection,
     )

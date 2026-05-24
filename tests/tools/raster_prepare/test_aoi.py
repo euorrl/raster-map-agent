@@ -12,7 +12,7 @@ from app.tools.raster_prepare import (
 def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
     monkeypatch, tmp_path
 ):
-    """Nominatim 查询应返回目标 GeoJSON、bbox 和尺度。"""
+    """Nominatim 查询应返回目标 GeoJSON、bbox 和基础 metadata。"""
 
     geojson = {
         "type": "FeatureCollection",
@@ -53,7 +53,6 @@ def test_resolve_administrative_aoi_downloads_boundary_and_builds_result(
     assert result.name == "Hangzhou, Zhejiang, China"
     assert result.bbox == [119.9, 30.1, 120.5, 30.5]
     assert result.area_km2 > 0
-    assert result.spatial_scale == "local"
     assert result.source == "nominatim"
     assert result.boundary_geojson_path.endswith("Hangzhou_Zhejiang_China.geojson")
 

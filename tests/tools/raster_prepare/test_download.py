@@ -49,6 +49,7 @@ def test_download_raster_assets_downloads_planned_assets(monkeypatch, tmp_path):
                     url="https://example.com/medium_nir.tif",
                 ),
             ],
+            data_source="sentinel2",
             provider="earth_search",
             collection="sentinel-2-l2a",
         ),
@@ -131,6 +132,33 @@ def test_raster_scene_plan_request_rejects_unsupported_band():
             max_cloud_cover=20,
             required_bands=["B99"],
         )
+
+
+def test_raster_scene_plan_request_rejects_unsupported_data_source():
+    # 验证 V1 只接受已经登记的数据源，避免上游传入不可执行的卫星类型。
+    with pytest.raises(ValidationError, match="Unsupported raster data source"):
+        RasterScenePlanRequest(
+            bbox=[9.04, 45.35, 9.32, 45.56],
+            start_date="2024-06-01",
+            end_date="2024-08-31",
+            max_cloud_cover=20,
+            required_bands=["B04"],
+            data_source="landsat",
+        )
+
+
+def test_raster_scene_plan_request_normalizes_data_source_name():
+    # 验证上游大小写不同也会被统一成 V1 支持的 sentinel2。
+    request = RasterScenePlanRequest(
+        bbox=[9.04, 45.35, 9.32, 45.56],
+        start_date="2024-06-01",
+        end_date="2024-08-31",
+        max_cloud_cover=20,
+        required_bands=["B04"],
+        data_source="Sentinel2",
+    )
+
+    assert request.data_source == "sentinel2"
 
 
 def test_search_earth_search_uses_rfc3339_datetime(monkeypatch, tmp_path):

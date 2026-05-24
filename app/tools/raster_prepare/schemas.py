@@ -7,6 +7,8 @@ EARTH_SEARCH_BAND_ASSETS = {
     "B04": "red",
     "B08": "nir",
 }
+DEFAULT_RASTER_DATA_SOURCE = "sentinel2"
+
 AOI_DIRNAME = "aoi"
 RASTER_DIRNAME = "raster"
 CLIPPED_RASTER_DIRNAME = "clipped_raster"
@@ -20,15 +22,52 @@ class RasterClipError(RuntimeError):
     """栅格裁剪失败时抛出的错误。"""
 
 
+class RasterDataSourceConfig(BaseModel):
+    """栅格数据源的内部配置。
+
+    V1 只登记 Sentinel-2。保留 data_source 字段是为了让上游 plan
+    有稳定的参数协议，但当前不承诺多卫星/多 provider 支持。
+    """
+
+    data_source: str
+    provider: str
+    collection: str
+    band_assets: dict[str, str]
+
+
+RASTER_DATA_SOURCE_CONFIGS: dict[str, RasterDataSourceConfig] = {
+    DEFAULT_RASTER_DATA_SOURCE: RasterDataSourceConfig(
+        data_source=DEFAULT_RASTER_DATA_SOURCE,
+        provider="earth_search",
+        collection=EARTH_SEARCH_COLLECTION,
+        band_assets=EARTH_SEARCH_BAND_ASSETS,
+    )
+}
+SUPPORTED_RASTER_DATA_SOURCES = tuple(RASTER_DATA_SOURCE_CONFIGS)
+
+
+def get_raster_data_source_config(data_source: str) -> RasterDataSourceConfig:
+    """根据数据源名称返回内部 STAC 配置。"""
+
+    try:
+        return RASTER_DATA_SOURCE_CONFIGS[data_source]
+    except KeyError as error:
+        supported_sources = ", ".join(SUPPORTED_RASTER_DATA_SOURCES)
+        raise ValueError(
+            f"Unsupported raster data source: {data_source}. "
+            f"V1 only supports: {supported_sources}"
+        ) from error
+
+
 class AOIRequest(BaseModel):
     """AOI 解析请求。
 
-    上游 LLM 应把用户地点转换成包含上级行政区的消歧查询字符串，
+    上游 LLM 应把用户地点转换成包含上级行政区的查询字符串，
     例如 ``Hangzhou, Zhejiang, China``。
 
     Attributes:
         query: 可直接交给 Nominatim 搜索的地点查询字符串。
-        output_dir: AOI 边界文件输出目录。
+        workspace_dir: 当前任务的工作目录。
         limit: 最多请求的候选结果数量。
     """
 
@@ -52,7 +91,6 @@ class AOIResult(BaseModel):
         bbox: 最小覆盖目标行政区的 bbox，顺序为
             ``[min_lon, min_lat, max_lon, max_lat]``。
         area_km2: 根据 bbox 估算的近似面积，单位为平方千米。
-        spatial_scale: 空间尺度分类，例如 ``local``、``regional``。
         source: AOI 来源。
     """
 
@@ -60,7 +98,6 @@ class AOIResult(BaseModel):
     boundary_geojson_path: str
     bbox: list[float]
     area_km2: float
-    spatial_scale: str
     source: str
 
 
@@ -73,9 +110,10 @@ class RasterScenePlanRequest(BaseModel):
         end_date: 查询结束日期，格式为 ``YYYY-MM-DD``。
         max_cloud_cover: 允许的最大云量百分比。
         required_bands: 需要下载的波段，例如 ``B04`` 和 ``B08``。
-        provider: 数据提供方标识。V1 默认使用 Earth Search。
-        collection: STAC collection 名称。
+        data_source: 上游 plan 选择的数据源。V1 先只实现 ``sentinel2``。
         limit: 最多请求的候选 scene 数量。
+        max_candidate_scenes_per_group: 每个空间分组最多保留的候选 scene 数量。
+        selected_scenes_per_group: 每个空间分组最终进入下载 plan 的 scene 数量。
     """
 
     bbox: list[float] = Field(min_length=4, max_length=4)
@@ -83,35 +121,42 @@ class RasterScenePlanRequest(BaseModel):
     end_date: str
     max_cloud_cover: float = Field(ge=0, le=100)
     required_bands: list[str] = Field(min_length=1)
-    provider: str = "earth_search"
-    collection: str = EARTH_SEARCH_COLLECTION
+    data_source: str = DEFAULT_RASTER_DATA_SOURCE
     limit: int = Field(default=10, ge=1, le=100)
     max_candidate_scenes_per_group: int = Field(default=5, ge=1, le=20)
     selected_scenes_per_group: int = Field(default=3, ge=1, le=10)
 
     @model_validator(mode="after")
-    def validate_scene_counts(self):
+    def validate_scene_plan_request(self):
         if self.selected_scenes_per_group > self.max_candidate_scenes_per_group:
             raise ValueError(
                 "selected_scenes_per_group cannot exceed "
                 "max_candidate_scenes_per_group"
             )
 
+        config = get_raster_data_source_config(self.data_source)
+        unsupported_bands = [
+            band for band in self.required_bands if band not in config.band_assets
+        ]
+        if unsupported_bands:
+            unsupported_band_names = ", ".join(unsupported_bands)
+            raise ValueError(f"Unsupported raster bands: {unsupported_band_names}")
+
         return self
 
     @field_validator("required_bands")
     @classmethod
     def normalize_required_bands(cls, bands: list[str]) -> list[str]:
-        normalized_bands = [band.upper() for band in bands]
-        unsupported_bands = [
-            band for band in normalized_bands if band not in EARTH_SEARCH_BAND_ASSETS
-        ]
+        """把波段名称统一转为大写，方便后续查配置。"""
 
-        if unsupported_bands:
-            unsupported_band_names = ", ".join(unsupported_bands)
-            raise ValueError(f"Unsupported raster bands: {unsupported_band_names}")
+        return [band.upper() for band in bands]
 
-        return normalized_bands
+    @field_validator("data_source")
+    @classmethod
+    def normalize_data_source(cls, data_source: str) -> str:
+        """把数据源名称统一转为小写，当前只允许 sentinel2。"""
+
+        return data_source.lower()
 
 
 class RasterScene(BaseModel):
@@ -149,6 +194,7 @@ class RasterScenePlanResult(BaseModel):
 
     scene_ids: list[str]
     assets: list[RasterDownloadAsset]
+    data_source: str
     provider: str
     collection: str
 
@@ -171,6 +217,7 @@ class RasterDownloadResult(BaseModel):
 
     scene_ids: list[str]
     band_paths: dict[str, list[str]]
+    data_source: str
     provider: str
     collection: str
 
@@ -181,7 +228,8 @@ class RasterClipRequest(BaseModel):
     Attributes:
         raster_path: 输入 GeoTIFF 路径。当前假设它是单个波段文件。
         boundary_geojson_path: AOI GeoJSON 路径。
-        output_path: 裁剪后 GeoTIFF 输出路径。
+        workspace_dir: 当前任务的工作目录。
+        output_filename: 可选输出文件名，不传则自动生成。
     """
 
     raster_path: Path

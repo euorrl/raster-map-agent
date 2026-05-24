@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.tools.raster_prepare.schemas import (
-    EARTH_SEARCH_BAND_ASSETS,
+    DEFAULT_RASTER_DATA_SOURCE,
     RasterDownloadAsset,
     RasterDownloadError,
     RasterScene,
@@ -15,6 +15,7 @@ from app.tools.raster_prepare.schemas import (
     RasterSceneCandidateStore,
     RasterScenePlanResult,
     RasterScenePlanRequest,
+    get_raster_data_source_config,
 )
 from app.utils.logging import get_logger
 
@@ -42,8 +43,7 @@ def build_raster_scene_plan(
         store=store,
         required_bands=request.required_bands,
         selected_scenes_per_group=request.selected_scenes_per_group,
-        provider=request.provider,
-        collection=request.collection,
+        data_source=request.data_source,
     )
 
 
@@ -54,9 +54,8 @@ def update_raster_scene_candidates(
     """查询当前请求的 scene metadata，并合并进候选池。"""
 
     logger.info(
-        "Updating raster scene candidates provider=%s collection=%s bbox=%s",
-        request.provider,
-        request.collection,
+        "Updating raster scene candidates data_source=%s bbox=%s",
+        request.data_source,
         request.bbox,
     )
     scenes = _search_earth_search(request)
@@ -82,12 +81,13 @@ def build_raster_scene_plan_from_candidates(
     store: RasterSceneCandidateStore,
     required_bands: list[str],
     selected_scenes_per_group: int,
-    provider: str,
-    collection: str,
+    data_source: str = DEFAULT_RASTER_DATA_SOURCE,
 ) -> RasterScenePlanResult:
     """从候选池中选择每组云量最低的 scenes，并生成下载计划。"""
 
+    config = get_raster_data_source_config(data_source)
     selected_scenes = []
+
     for group in store.groups.values():
         selected_scenes.extend(group.candidates[:selected_scenes_per_group])
 
@@ -98,7 +98,7 @@ def build_raster_scene_plan_from_candidates(
 
     assets = []
     for scene in selected_scenes:
-        band_urls = _extract_band_urls(scene, required_bands)
+        band_urls = _extract_band_urls(scene, required_bands, config.band_assets)
         for band, url in band_urls.items():
             assets.append(
                 RasterDownloadAsset(
@@ -111,16 +111,18 @@ def build_raster_scene_plan_from_candidates(
     return RasterScenePlanResult(
         scene_ids=[scene.scene_id for scene in selected_scenes],
         assets=assets,
-        provider=provider,
-        collection=collection,
+        data_source=config.data_source,
+        provider=config.provider,
+        collection=config.collection,
     )
 
 
 def _search_earth_search(request: RasterScenePlanRequest) -> list[RasterScene]:
     """调用 Earth Search STAC API 搜索候选 scene。"""
 
+    config = get_raster_data_source_config(request.data_source)
     payload = {
-        "collections": [request.collection],
+        "collections": [config.collection],
         "bbox": request.bbox,
         "datetime": _build_stac_datetime_range(request.start_date, request.end_date),
         "limit": request.limit,
@@ -242,13 +244,17 @@ def _filter_scenes_by_cloud_cover(
     ]
 
 
-def _extract_band_urls(scene: RasterScene, required_bands: list[str]) -> dict[str, str]:
+def _extract_band_urls(
+    scene: RasterScene,
+    required_bands: list[str],
+    band_assets: dict[str, str],
+) -> dict[str, str]:
     """从 scene assets 中提取请求波段对应的下载 URL。"""
 
     band_urls = {}
 
     for band in required_bands:
-        asset_key = EARTH_SEARCH_BAND_ASSETS[band]
+        asset_key = band_assets[band]
         asset_url = scene.assets.get(asset_key)
 
         if not asset_url:
