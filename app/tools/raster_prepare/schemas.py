@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 EARTH_SEARCH_COLLECTION = "sentinel-2-l2a"
 EARTH_SEARCH_BAND_ASSETS = {
@@ -86,6 +86,18 @@ class RasterScenePlanRequest(BaseModel):
     provider: str = "earth_search"
     collection: str = EARTH_SEARCH_COLLECTION
     limit: int = Field(default=10, ge=1, le=100)
+    max_candidate_scenes_per_group: int = Field(default=5, ge=1, le=20)
+    selected_scenes_per_group: int = Field(default=3, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_scene_counts(self):
+        if self.selected_scenes_per_group > self.max_candidate_scenes_per_group:
+            raise ValueError(
+                "selected_scenes_per_group cannot exceed "
+                "max_candidate_scenes_per_group"
+            )
+
+        return self
 
     @field_validator("required_bands")
     @classmethod
@@ -109,6 +121,19 @@ class RasterScene(BaseModel):
     datetime: str | None = None
     cloud_cover: float | None = None
     assets: dict[str, str] = Field(default_factory=dict)
+
+
+class RasterSceneCandidateGroup(BaseModel):
+    """同一空间分组下的候选 scene 集合。"""
+
+    group_id: str
+    candidates: list[RasterScene] = Field(default_factory=list)
+
+
+class RasterSceneCandidateStore(BaseModel):
+    """可跨多次 scene plan 调用累积的候选 scene 池。"""
+
+    groups: dict[str, RasterSceneCandidateGroup] = Field(default_factory=dict)
 
 
 class RasterDownloadAsset(BaseModel):

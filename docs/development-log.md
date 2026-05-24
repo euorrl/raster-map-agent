@@ -77,6 +77,7 @@ workflow 顺序是否清楚
 - `RasterScenePlanRequest`
 - `RasterDownloadRequest`
 - `RasterScene`
+- `RasterSceneCandidateStore`
 - `RasterDownloadResult`
 - Earth Search STAC 搜索
 - Sentinel-2 L2A `B04` / `B08` 下载

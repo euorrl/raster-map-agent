@@ -7,6 +7,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.tools.raster_prepare import (
     RasterDownloadRequest,
+    RasterSceneCandidateStore,
     RasterScenePlanRequest,
     build_raster_scene_plan,
     download_raster_assets,
@@ -17,19 +18,44 @@ from app.utils import configure_logging  # noqa: E402
 def main() -> None:
     configure_logging("INFO")
 
-    plan_request = RasterScenePlanRequest(
-        bbox=[102.989623,
-            30.0916339,
-            104.8948475,
-            31.4370968
-        ],
-        start_date="2023-06-01",
-        end_date="2024-08-31",
-        max_cloud_cover=20,
-        required_bands=["B04", "B08"],
+    store = RasterSceneCandidateStore()
+    plan_requests = (
+        RasterScenePlanRequest(
+            bbox=[
+    9.0408867,
+    45.3867381,
+    9.2781103,
+    45.5358482
+  ],
+            start_date="2024-06-01",
+            end_date="2024-08-31",
+            max_cloud_cover=20,
+            required_bands=["B04", "B08"],
+        ),
+        RasterScenePlanRequest(
+            bbox=[
+    9.0408867,
+    45.3867381,
+    9.2781103,
+    45.5358482
+  ],
+            start_date="2023-06-01",
+            end_date="2023-08-31",
+            max_cloud_cover=20,
+            required_bands=["B04", "B08"],
+        ),
     )
 
-    plan = build_raster_scene_plan(plan_request)
+    plan = None
+    for plan_request in plan_requests:
+        plan = build_raster_scene_plan(plan_request, store=store)
+
+    if plan is None:
+        raise RuntimeError("No raster scene plan was built.")
+
+    print("candidate groups:", list(store.groups))
+    print("planned scenes:", plan.scene_ids)
+
     result = download_raster_assets(
         RasterDownloadRequest(
             plan=plan,

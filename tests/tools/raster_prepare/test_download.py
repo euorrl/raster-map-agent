@@ -8,6 +8,7 @@ from app.tools.raster_prepare import (
     RasterDownloadError,
     RasterDownloadRequest,
     RasterScene,
+    RasterSceneCandidateStore,
     RasterScenePlanResult,
     RasterScenePlanRequest,
     build_raster_scene_plan,
@@ -186,6 +187,75 @@ def test_build_raster_scene_plan_deduplicates_scenes(monkeypatch, tmp_path):
     }
 
 
+def test_build_raster_scene_plan_limits_candidates_and_selects_lowest_cloud(
+    monkeypatch, tmp_path
+):
+    # 验证同一空间分组最多保留 5 个候选，并选择云量最低的 3 个进入 plan。
+    scenes = [
+        _build_scene("S2A_32TMR_20240801_0_L2A", 12),
+        _build_scene("S2A_32TMR_20240802_0_L2A", 1),
+        _build_scene("S2A_32TMR_20240803_0_L2A", 9),
+        _build_scene("S2A_32TMR_20240804_0_L2A", 3),
+        _build_scene("S2A_32TMR_20240805_0_L2A", 6),
+        _build_scene("S2A_32TMR_20240806_0_L2A", 20),
+    ]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+    store = RasterSceneCandidateStore()
+    request = RasterScenePlanRequest(
+        bbox=[9.04, 45.35, 9.32, 45.56],
+        start_date="2024-06-01",
+        end_date="2024-08-31",
+        max_cloud_cover=50,
+        required_bands=["B04", "B08"],
+        max_candidate_scenes_per_group=5,
+        selected_scenes_per_group=3,
+    )
+
+    plan = build_raster_scene_plan(request, store=store)
+
+    assert list(store.groups) == ["32TMR"]
+    assert len(store.groups["32TMR"].candidates) == 5
+    assert plan.scene_ids == [
+        "S2A_32TMR_20240802_0_L2A",
+        "S2A_32TMR_20240804_0_L2A",
+        "S2A_32TMR_20240805_0_L2A",
+    ]
+
+
+def test_build_raster_scene_plan_accumulates_existing_store(monkeypatch, tmp_path):
+    # 验证传入同一个 store 时，多次调用会累积不同时间窗口的候选 scene。
+    search_results = [
+        [_build_scene("S2A_32TMR_20240801_0_L2A", 10)],
+        [
+            _build_scene("S2A_32TMR_20240701_0_L2A", 5),
+            _build_scene("S2A_32TNR_20240701_0_L2A", 7),
+        ],
+    ]
+
+    def search_once(_request):
+        return search_results.pop(0)
+
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        search_once,
+    )
+    store = RasterSceneCandidateStore()
+    request = _build_request(tmp_path)
+
+    build_raster_scene_plan(request, store=store)
+    plan = build_raster_scene_plan(request, store=store)
+
+    assert set(store.groups) == {"32TMR", "32TNR"}
+    assert plan.scene_ids == [
+        "S2A_32TMR_20240701_0_L2A",
+        "S2A_32TMR_20240801_0_L2A",
+        "S2A_32TNR_20240701_0_L2A",
+    ]
+
+
 def _build_request(_workspace_dir: Path) -> RasterScenePlanRequest:
     return RasterScenePlanRequest(
         bbox=[9.04, 45.35, 9.32, 45.56],
@@ -193,6 +263,17 @@ def _build_request(_workspace_dir: Path) -> RasterScenePlanRequest:
         end_date="2024-08-31",
         max_cloud_cover=20,
         required_bands=["B04", "B08"],
+    )
+
+
+def _build_scene(scene_id: str, cloud_cover: float) -> RasterScene:
+    return RasterScene(
+        scene_id=scene_id,
+        cloud_cover=cloud_cover,
+        assets={
+            "red": f"https://example.com/{scene_id}_red.tif",
+            "nir": f"https://example.com/{scene_id}_nir.tif",
+        },
     )
 
 

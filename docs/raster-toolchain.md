@@ -84,8 +84,11 @@ New York City, New York, United States
 ```text
 scene_plan.py
 -> 搜索 STAC metadata
+-> 合并到 RasterSceneCandidateStore
 -> 按 scene_id 去重
 -> 按云量过滤
+-> 每个空间分组最多保留 5 个候选 scene
+-> 每个空间分组选择云量最低的 3 个 scene
 -> 生成 RasterScenePlanResult
 
 download.py

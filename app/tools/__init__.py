@@ -9,12 +9,16 @@ from app.tools.raster_prepare import (
     RasterDownloadRequest,
     RasterDownloadResult,
     RasterScene,
+    RasterSceneCandidateGroup,
+    RasterSceneCandidateStore,
     RasterScenePlanResult,
     RasterScenePlanRequest,
     build_raster_scene_plan,
+    build_raster_scene_plan_from_candidates,
     clip_raster_to_aoi,
     download_raster_assets,
     resolve_administrative_aoi,
+    update_raster_scene_candidates,
 )
 
 __all__ = [
@@ -28,10 +32,14 @@ __all__ = [
     "RasterDownloadRequest",
     "RasterDownloadResult",
     "RasterScene",
+    "RasterSceneCandidateGroup",
+    "RasterSceneCandidateStore",
     "RasterScenePlanResult",
     "RasterScenePlanRequest",
     "build_raster_scene_plan",
+    "build_raster_scene_plan_from_candidates",
     "clip_raster_to_aoi",
     "download_raster_assets",
     "resolve_administrative_aoi",
+    "update_raster_scene_candidates",
 ]

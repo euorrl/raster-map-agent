@@ -11,6 +11,8 @@ from app.tools.raster_prepare.schemas import (
     RasterDownloadAsset,
     RasterDownloadError,
     RasterScene,
+    RasterSceneCandidateGroup,
+    RasterSceneCandidateStore,
     RasterScenePlanResult,
     RasterScenePlanRequest,
 )
@@ -21,32 +23,82 @@ logger = get_logger(__name__)
 EARTH_SEARCH_SEARCH_URL = "https://earth-search.aws.element84.com/v1/search"
 
 
-def build_raster_scene_plan(request: RasterScenePlanRequest) -> RasterScenePlanResult:
-    """根据请求构建待下载 scene asset 清单。
+def build_raster_scene_plan(
+    request: RasterScenePlanRequest,
+    store: RasterSceneCandidateStore | None = None,
+) -> RasterScenePlanResult:
+    """更新候选池，并基于候选池构建待下载 scene asset 清单。
 
-    当前版本只做最小规划：STAC 搜索、scene_id 去重、云量过滤、提取所需波段。
-    后续分页查询、覆盖检测和时间窗口扩展会继续放在这个模块里。
+    如果传入 ``store``，函数会原地更新它，因此多次调用可以累积多个
+    时间窗口或分页查询的候选 scenes。
     """
 
+    if store is None:
+        store = RasterSceneCandidateStore()
+
+    update_raster_scene_candidates(request, store)
+
+    return build_raster_scene_plan_from_candidates(
+        store=store,
+        required_bands=request.required_bands,
+        selected_scenes_per_group=request.selected_scenes_per_group,
+        provider=request.provider,
+        collection=request.collection,
+    )
+
+
+def update_raster_scene_candidates(
+    request: RasterScenePlanRequest,
+    store: RasterSceneCandidateStore,
+) -> None:
+    """查询当前请求的 scene metadata，并合并进候选池。"""
+
     logger.info(
-        "Planning raster download provider=%s collection=%s bbox=%s",
+        "Updating raster scene candidates provider=%s collection=%s bbox=%s",
         request.provider,
         request.collection,
         request.bbox,
     )
-
     scenes = _search_earth_search(request)
     scenes = _deduplicate_scenes_by_id(scenes)
     scenes = _filter_scenes_by_cloud_cover(scenes, request.max_cloud_cover)
 
-    if not scenes:
+    for scene in scenes:
+        group_id = _scene_group_id(scene)
+        group = store.groups.setdefault(
+            group_id,
+            RasterSceneCandidateGroup(group_id=group_id),
+        )
+
+        if any(candidate.scene_id == scene.scene_id for candidate in group.candidates):
+            continue
+
+        group.candidates.append(scene)
+        group.candidates = _sort_scenes_by_cloud_cover(group.candidates)
+        group.candidates = group.candidates[: request.max_candidate_scenes_per_group]
+
+
+def build_raster_scene_plan_from_candidates(
+    store: RasterSceneCandidateStore,
+    required_bands: list[str],
+    selected_scenes_per_group: int,
+    provider: str,
+    collection: str,
+) -> RasterScenePlanResult:
+    """从候选池中选择每组云量最低的 scenes，并生成下载计划。"""
+
+    selected_scenes = []
+    for group in store.groups.values():
+        selected_scenes.extend(group.candidates[:selected_scenes_per_group])
+
+    if not selected_scenes:
         raise RasterDownloadError(
             "No raster scenes found for the requested parameters."
         )
 
     assets = []
-    for scene in scenes:
-        band_urls = _extract_band_urls(scene, request.required_bands)
+    for scene in selected_scenes:
+        band_urls = _extract_band_urls(scene, required_bands)
         for band, url in band_urls.items():
             assets.append(
                 RasterDownloadAsset(
@@ -57,10 +109,10 @@ def build_raster_scene_plan(request: RasterScenePlanRequest) -> RasterScenePlanR
             )
 
     return RasterScenePlanResult(
-        scene_ids=[scene.scene_id for scene in scenes],
+        scene_ids=[scene.scene_id for scene in selected_scenes],
         assets=assets,
-        provider=request.provider,
-        collection=request.collection,
+        provider=provider,
+        collection=collection,
     )
 
 
@@ -153,6 +205,28 @@ def _deduplicate_scenes_by_id(scenes: list[RasterScene]) -> list[RasterScene]:
         deduplicated_scenes.append(scene)
 
     return deduplicated_scenes
+
+
+def _scene_group_id(scene: RasterScene) -> str:
+    """从 Sentinel-2 scene_id 中提取空间分组 ID。"""
+
+    parts = scene.scene_id.split("_")
+    if len(parts) >= 2 and parts[1]:
+        return parts[1]
+
+    return scene.scene_id
+
+
+def _sort_scenes_by_cloud_cover(scenes: list[RasterScene]) -> list[RasterScene]:
+    """按云量从低到高排序，云量缺失的 scene 放到最后。"""
+
+    return sorted(
+        scenes,
+        key=lambda scene: (
+            scene.cloud_cover is None,
+            scene.cloud_cover if scene.cloud_cover is not None else 101,
+        ),
+    )
 
 
 def _filter_scenes_by_cloud_cover(
