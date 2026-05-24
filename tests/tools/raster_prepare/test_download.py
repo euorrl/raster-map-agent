@@ -54,8 +54,12 @@ def test_download_raster_assets_downloads_planned_assets(monkeypatch, tmp_path):
             diagnostics=RasterScenePlanDiagnostics(
                 coverage_status="covered",
                 coverage_ratio=1,
+                min_coverage_ratio=1,
                 is_retriable=False,
-                message="Selected scenes fully cover the AOI geometry.",
+                message=(
+                    "Selected scenes cover 100.00% of the AOI geometry, "
+                    "meeting the minimum required coverage 100.00%."
+                ),
                 selected_scene_count=2,
             ),
             data_source="sentinel2",
@@ -351,12 +355,17 @@ def test_build_raster_scene_plan_detects_footprint_gap(monkeypatch, tmp_path):
         "app.tools.raster_prepare.scene_plan._search_earth_search",
         lambda _: scenes,
     )
-    request = _build_request(tmp_path, bbox=[0, 0, 10, 10])
+    request = _build_request(
+        tmp_path,
+        bbox=[0, 0, 10, 10],
+        min_coverage_ratio=0.9,
+    )
 
     plan = build_raster_scene_plan(request)
 
     assert plan.diagnostics.coverage_status == "not_covered"
     assert plan.diagnostics.coverage_ratio == pytest.approx(0.8)
+    assert plan.diagnostics.min_coverage_ratio == pytest.approx(0.9)
     assert plan.diagnostics.is_retriable is True
     assert plan.diagnostics.failure_reason == "insufficient_spatial_coverage"
     assert plan.diagnostics.suggested_actions == [
@@ -364,6 +373,33 @@ def test_build_raster_scene_plan_detects_footprint_gap(monkeypatch, tmp_path):
         "increase_max_cloud_cover",
         "increase_limit",
     ]
+
+
+def test_build_raster_scene_plan_accepts_coverage_above_threshold(
+    monkeypatch, tmp_path
+):
+    scenes = [
+        _build_scene("S2A_32TMR_20240801_0_L2A", 5, _polygon(0, 0, 4, 10)),
+        _build_scene("S2A_32TMR_20240802_0_L2A", 6, _polygon(6, 0, 10, 10)),
+    ]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+    request = _build_request(
+        tmp_path,
+        bbox=[0, 0, 10, 10],
+        min_coverage_ratio=0.7,
+    )
+
+    plan = build_raster_scene_plan(request)
+
+    assert plan.diagnostics.coverage_status == "covered"
+    assert plan.diagnostics.coverage_ratio == pytest.approx(0.8)
+    assert plan.diagnostics.min_coverage_ratio == pytest.approx(0.7)
+    assert plan.diagnostics.is_retriable is False
+    assert plan.diagnostics.failure_reason is None
+    assert plan.diagnostics.suggested_actions == []
 
 
 def test_build_raster_scene_plan_reports_missing_aoi_geometry(monkeypatch, tmp_path):
@@ -413,6 +449,7 @@ def _build_request(
     _workspace_dir: Path,
     bbox: list[float] | None = None,
     include_boundary: bool = True,
+    min_coverage_ratio: float = 0.7,
 ) -> RasterScenePlanRequest:
     bbox = bbox or [9.04, 45.35, 9.32, 45.56]
     boundary_geojson_path = None
@@ -426,6 +463,7 @@ def _build_request(
         end_date="2024-08-31",
         max_cloud_cover=20,
         required_bands=["B04", "B08"],
+        min_coverage_ratio=min_coverage_ratio,
     )
 
 

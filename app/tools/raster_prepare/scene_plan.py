@@ -49,6 +49,7 @@ def build_raster_scene_plan(
         max_selected_scenes=request.max_selected_scenes,
         contribution_tolerance=request.contribution_tolerance,
         min_scene_overlap_ratio=request.min_scene_overlap_ratio,
+        min_coverage_ratio=request.min_coverage_ratio,
         data_source=request.data_source,
         boundary_geojson_path=request.boundary_geojson_path,
     )
@@ -79,6 +80,7 @@ def build_raster_scene_plan_from_candidates(
     max_selected_scenes: int,
     contribution_tolerance: float,
     min_scene_overlap_ratio: float,
+    min_coverage_ratio: float,
     data_source: str = DEFAULT_RASTER_DATA_SOURCE,
     boundary_geojson_path: str | None = None,
 ) -> RasterScenePlanResult:
@@ -118,6 +120,7 @@ def build_raster_scene_plan_from_candidates(
         diagnostics=_build_coverage_diagnostics(
             selected_scenes,
             boundary_geojson_path,
+            min_coverage_ratio,
         ),
         data_source=config.data_source,
         provider=config.provider,
@@ -317,9 +320,6 @@ def _select_scenes_by_coverage(
         ]
         uncovered_geometry = uncovered_geometry.difference(selected_geometry)
 
-        if _coverage_ratio(aoi_geometry, unary_union([selected_geometry])) >= 1:
-            break
-
         selected_geometries = [
             geometry
             for geometry in (_scene_geometry(scene) for scene in selected_scenes)
@@ -382,6 +382,7 @@ def _extract_band_urls(
 def _build_coverage_diagnostics(
     selected_scenes: list[RasterScene],
     boundary_geojson_path: str | None,
+    min_coverage_ratio: float,
 ) -> RasterScenePlanDiagnostics:
     """用 Shapely 检查选中 scene footprints 是否覆盖真实 AOI。"""
 
@@ -389,6 +390,7 @@ def _build_coverage_diagnostics(
         return RasterScenePlanDiagnostics(
             coverage_status="unknown",
             coverage_ratio=0,
+            min_coverage_ratio=min_coverage_ratio,
             is_retriable=False,
             failure_reason="missing_aoi_geometry",
             message="AOI GeoJSON path is missing, so scene coverage cannot be checked.",
@@ -402,6 +404,7 @@ def _build_coverage_diagnostics(
         return RasterScenePlanDiagnostics(
             coverage_status="unknown",
             coverage_ratio=0,
+            min_coverage_ratio=min_coverage_ratio,
             is_retriable=False,
             failure_reason="invalid_aoi_geometry",
             message=f"AOI GeoJSON cannot be used for coverage check: {error}",
@@ -433,6 +436,7 @@ def _build_coverage_diagnostics(
         return RasterScenePlanDiagnostics(
             coverage_status="unknown",
             coverage_ratio=0,
+            min_coverage_ratio=min_coverage_ratio,
             is_retriable=False,
             failure_reason="missing_scene_geometry",
             message="Selected scenes do not include usable footprint geometry.",
@@ -448,6 +452,7 @@ def _build_coverage_diagnostics(
         return RasterScenePlanDiagnostics(
             coverage_status="unknown",
             coverage_ratio=coverage_ratio,
+            min_coverage_ratio=min_coverage_ratio,
             is_retriable=False,
             failure_reason="missing_scene_geometry",
             message=(
@@ -459,22 +464,28 @@ def _build_coverage_diagnostics(
             missing_geometry_scene_ids=missing_geometry_scene_ids,
         )
 
-    if coverage_ratio >= COVERAGE_COMPLETE_THRESHOLD:
+    if coverage_ratio >= min_coverage_ratio:
         return RasterScenePlanDiagnostics(
             coverage_status="covered",
             coverage_ratio=coverage_ratio,
+            min_coverage_ratio=min_coverage_ratio,
             is_retriable=False,
-            message="Selected scenes fully cover the AOI geometry.",
+            message=(
+                f"Selected scenes cover {coverage_ratio:.2%} of the AOI geometry, "
+                f"meeting the minimum required coverage {min_coverage_ratio:.2%}."
+            ),
             selected_scene_count=len(selected_scenes),
         )
 
     return RasterScenePlanDiagnostics(
         coverage_status="not_covered",
         coverage_ratio=coverage_ratio,
+        min_coverage_ratio=min_coverage_ratio,
         is_retriable=True,
         failure_reason="insufficient_spatial_coverage",
         message=(
-            "Selected scenes do not fully cover the AOI geometry. "
+            f"Selected scenes cover {coverage_ratio:.2%} of the AOI geometry, "
+            f"below the minimum required coverage {min_coverage_ratio:.2%}. "
             "Try expanding date range, relaxing cloud cover, or increasing limit."
         ),
         suggested_actions=[

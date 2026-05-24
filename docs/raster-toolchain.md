@@ -87,7 +87,7 @@ scene_plan.py
 -> 按 scene_id 去重
 -> 按云量过滤
 -> 全局累积候选 scene
--> 用 coverage-aware greedy 最多选择 5 个 scene
+-> 用 coverage-aware greedy 最多选择 max_selected_scenes 个 scene
 -> 使用 Shapely 检查选中 scene footprints 对真实 AOI GeoJSON 的覆盖
 -> 生成 RasterScenePlanResult
 
@@ -152,10 +152,19 @@ RasterDownloadResult(
 - coverage diagnostics 使用 scene footprint union 与真实 AOI GeoJSON geometry 对比
 - diagnostics 通过 `is_retriable` 告诉 ReAct 是否应该继续调参
 - 大 AOI 可能无法被单个 Sentinel-2 tile 完整覆盖
+- coverage 默认不再要求 100% 完整覆盖，而是要求达到 `min_coverage_ratio=0.7`
 
 当前默认 `limit=100`。这是 Earth Search 单次请求允许的上限，用来降低
 STAC 返回结果被少数 tile 或少数日期占满的风险；真正进入下载的 scene
 仍由 `max_selected_scenes` 控制。
+
+`min_coverage_ratio` 是 V1 的最低可接受覆盖率。达到该阈值时，scene plan
+会标记为 `covered`，但仍然保留真实 `coverage_ratio`，方便后续 answer
+向用户说明当前影像覆盖情况。低于该阈值时，diagnostics 会标记为
+`not_covered`，并建议扩大日期、放宽云量或增加 limit。
+
+该阈值只用于诊断，不会让 greedy selection 在达到 70% 后提前停止；选择阶段仍会
+尽量提高覆盖率，直到接近完整覆盖、没有新增贡献或达到 `max_selected_scenes`。
 
 scene 选择规则：
 

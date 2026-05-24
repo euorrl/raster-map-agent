@@ -289,3 +289,30 @@ AOI GeoJSON geometry
 如果缺少 `boundary_geojson_path`，或 GeoJSON 无法解析，诊断结果会标记为
 `unknown`，并设置 `is_retriable=false`。这表示问题不是扩大日期、放宽云量或
 增加 limit 能解决的，后续 ReAct 应停止当前数据下载调参循环并返回明确原因。
+
+## Coverage 不是 V1 的 100% 硬门槛
+
+真实遥感数据存在一个作品集项目必须接受的现实：某些 AOI 在给定日期、云量和
+Sentinel-2 数据源下，可能很难得到 100% footprint 覆盖。继续把 100% 作为硬门槛，
+会让很多已经足够展示完整流程的区域被判定失败。
+
+因此当前设计改为：
+
+```text
+coverage_ratio >= min_coverage_ratio -> 允许继续
+coverage_ratio < min_coverage_ratio  -> 反馈给 ReAct 调参
+```
+
+V1 默认：
+
+```python
+min_coverage_ratio = 0.7
+```
+
+这意味着 coverage 仍然是质量控制指标，但不是绝对阻塞条件。最终回答层需要保留并说明
+真实 coverage_ratio，例如“当前可用影像覆盖约 94.8% 的 AOI”。如果低于阈值，则说明
+当前影像覆盖不足，并让 ReAct 优先尝试扩大日期、放宽云量或增加 limit。
+
+`min_coverage_ratio` 只影响 diagnostics 的通过/失败，不改变 scene 选择算法的目标。
+scene selection 仍然优先补未覆盖区域，直到接近完整覆盖、没有新的有效贡献，或达到
+`max_selected_scenes`。

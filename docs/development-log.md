@@ -181,6 +181,8 @@ AOI 边界可获取
 真实 Sentinel-2 波段可下载
 真实 GeoTIFF 可裁剪
 nodata 策略明确
+scene plan 可返回 coverage diagnostics
+coverage 默认使用最低可接受阈值而不是 100% 硬门槛
 ```
 
 下一座关键桥是：

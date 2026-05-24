@@ -24,11 +24,11 @@ def main() -> None:
     plan_requests = (
         RasterScenePlanRequest(
             bbox=[
-    111.8908381,
-    27.8512095,
-    114.2560358,
-    28.6644154
-  ],
+                111.8908381,
+                27.8512095,
+                114.2560358,
+                28.6644154,
+            ],
             boundary_geojson_path=boundary_geojson_path,
             start_date="2023-12-27",
             end_date="2024-01-09",
@@ -36,14 +36,15 @@ def main() -> None:
             required_bands=["B04", "B08"],
             data_source="sentinel2",
             limit=100,
+            min_coverage_ratio=0.7,
         ),
         RasterScenePlanRequest(
             bbox=[
-    111.8908381,
-    27.8512095,
-    114.2560358,
-    28.6644154
-  ],
+                111.8908381,
+                27.8512095,
+                114.2560358,
+                28.6644154,
+            ],
             boundary_geojson_path=boundary_geojson_path,
             start_date="2023-12-27",
             end_date="2024-01-09",
@@ -51,6 +52,7 @@ def main() -> None:
             required_bands=["B04", "B08"],
             data_source="sentinel2",
             limit=100,
+            min_coverage_ratio=0.7,
         ),
     )
 

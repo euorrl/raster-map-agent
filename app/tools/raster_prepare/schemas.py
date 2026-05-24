@@ -116,6 +116,7 @@ class RasterScenePlanRequest(BaseModel):
         max_selected_scenes: 最终进入下载 plan 的最大 scene 数量。
         contribution_tolerance: 新增覆盖贡献接近最优值时，允许用云量决定优先级。
         min_scene_overlap_ratio: 候选 scene 至少需要覆盖 AOI 的比例。
+        min_coverage_ratio: scene plan 对 AOI 的最低可接受覆盖率。
     """
 
     bbox: list[float] = Field(min_length=4, max_length=4)
@@ -129,6 +130,7 @@ class RasterScenePlanRequest(BaseModel):
     max_selected_scenes: int = Field(default=20, ge=1, le=100)
     contribution_tolerance: float = Field(default=0.95, ge=0, le=1)
     min_scene_overlap_ratio: float = Field(default=0, ge=0, le=1)
+    min_coverage_ratio: float = Field(default=0.7, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_scene_plan_request(self):
@@ -187,6 +189,7 @@ class RasterScenePlanDiagnostics(BaseModel):
 
     coverage_status: str
     coverage_ratio: float
+    min_coverage_ratio: float = Field(default=1, ge=0, le=1)
     is_retriable: bool = False
     failure_reason: str | None = None
     message: str

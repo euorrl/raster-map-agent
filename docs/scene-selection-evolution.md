@@ -159,9 +159,10 @@ STAC 搜索候选 scenes
 
 ```python
 limit = 100
-max_selected_scenes = 5
+max_selected_scenes = 20
 contribution_tolerance = 0.95
 min_scene_overlap_ratio = 0
+min_coverage_ratio = 0.7
 ```
 
 含义：
@@ -170,6 +171,7 @@ min_scene_overlap_ratio = 0
 - `max_selected_scenes`: 最终 plan 最多下载多少 scene
 - `contribution_tolerance`: 当新增贡献达到最佳贡献的 95% 时，认为贡献接近，可以用云量决定优先级
 - `min_scene_overlap_ratio`: scene 至少需要与 AOI 有多少重叠才参与选择
+- `min_coverage_ratio`: diagnostics 判定 scene plan 是否达到 V1 最低可接受覆盖率
 
 ## 贡献率如何理解
 
@@ -322,3 +324,35 @@ clip 负责裁剪到真实 AOI
 ```
 
 这个边界可以避免 scene_plan 过早承担 raster 像素处理逻辑。
+
+## Coverage 阈值从“完整覆盖”改为“最低可接受覆盖”
+
+在真实测试中发现，即使日期范围和云量条件已经比较宽泛，部分 AOI 仍然可能无法达到
+100% footprint 覆盖。原因通常不是代码错误，而是当前候选 Sentinel-2 scene 的真实有效
+footprint 本身存在缺口，或者 AOI 边缘区域没有合适影像。
+
+因此 V1 不再把 100% coverage 作为硬性通过条件，而是引入：
+
+```python
+min_coverage_ratio = 0.7
+```
+
+新的判断逻辑是：
+
+```text
+coverage_ratio >= min_coverage_ratio -> covered
+coverage_ratio < min_coverage_ratio  -> not_covered，可进入 ReAct 调参
+```
+
+注意：这个阈值只影响 diagnostics 的通过/失败判断，不会让 scene 选择在刚达到
+70% 时立刻停止。选择算法仍然会尽量补足 AOI coverage，直到接近完整覆盖、候选
+scene 没有新增贡献，或达到 `max_selected_scenes`。
+
+这样做的原因：
+
+- 对作品集 V1 来说，跑通完整本地流程比追求工业级完整覆盖更重要
+- 一些真实地区即使缺少边缘覆盖，仍然足以展示 NDVI 计算、mosaic、clip、render 流程
+- coverage_ratio 会被完整保留，后续 answer 可以向用户说明“当前影像覆盖率约为 xx%”
+- 如果低于阈值，diagnostics 仍然会建议扩大日期、放宽云量或增加 limit
+
+这不是放弃质量控制，而是把 coverage 从绝对门槛改成可解释的质量指标。
