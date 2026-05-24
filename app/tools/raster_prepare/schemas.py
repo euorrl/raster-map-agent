@@ -12,6 +12,7 @@ DEFAULT_RASTER_DATA_SOURCE = "sentinel2"
 AOI_DIRNAME = "aoi"
 RASTER_DIRNAME = "raster"
 CLIPPED_RASTER_DIRNAME = "clipped_raster"
+MOSAIC_RASTER_DIRNAME = "mosaic_raster"
 
 
 class RasterDownloadError(RuntimeError):
@@ -20,6 +21,10 @@ class RasterDownloadError(RuntimeError):
 
 class RasterClipError(RuntimeError):
     """栅格裁剪失败时抛出的错误。"""
+
+
+class RasterMosaicError(RuntimeError):
+    """栅格合并失败时抛出的错误。"""
 
 
 class RasterDataSourceConfig(BaseModel):
@@ -230,6 +235,24 @@ class RasterDownloadResult(BaseModel):
     data_source: str
     provider: str
     collection: str
+
+
+class RasterMosaicRequest(BaseModel):
+    """栅格合并请求。
+
+    Attributes:
+        input_dir: 包含待合并 GeoTIFF 的目录。
+        output_dir: 每个 band 的 mosaic GeoTIFF 输出目录。
+    """
+
+    input_dir: Path
+    output_dir: Path
+
+
+class RasterMosaicResult(BaseModel):
+    """栅格合并结果。"""
+
+    band_paths: dict[str, str]
 
 
 class RasterClipRequest(BaseModel):

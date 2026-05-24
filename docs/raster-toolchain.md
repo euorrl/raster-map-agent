@@ -188,31 +188,48 @@ scene 选择规则：
 
 ## Mosaic
 
-当前为空模块，下一步重点实现。
+当前实现：按 band 扫描输入目录，并用 `first` 策略输出每个 band 的 mosaic GeoTIFF。
 
 目标：
 
 ```text
-同一 band 的多个 tile
--> mosaic 成一张完整覆盖 AOI/bbox 的 GeoTIFF
+输入 raster 文件夹
+-> 按 B04、B08 等 band 自动分组
+-> 每个 band 的多张 tif 合并成一张 mosaic tif
+-> 输出 mosaic_raster 文件夹
 ```
 
-建议输入：
+输入：
 
 ```python
 RasterMosaicRequest(
-    band_paths=["tile1_B04.tif", "tile2_B04.tif"],
-    output_path=Path("mosaic_B04.tif"),
+    input_dir=Path("data/speak1/raster"),
+    output_dir=Path("data/speak1/mosaic_raster"),
 )
 ```
 
-建议输出：
+输出：
 
 ```python
 RasterMosaicResult(
-    mosaic_path="mosaic_B04.tif",
+    band_paths={
+        "B04": "data/speak1/mosaic_raster/mosaic_B04.tif",
+        "B08": "data/speak1/mosaic_raster/mosaic_B08.tif",
+    }
 )
 ```
+
+当前策略：
+
+```text
+rasterio.merge.merge(..., method="first")
+```
+
+也就是说，重叠区域保留排序后第一张有数据的 tif。V1 先使用这个策略降低复杂度和
+内存压力；median / cloud mask 等更复杂的像素级合成留到后续版本。
+
+如果输入 tif 跨不同 CRS，mosaic 会以排序后第一张 tif 的 CRS 作为目标 CRS，并用
+`WarpedVRT` 对其他 tif 做临时重投影后再合并。这个过程不会写出中间重投影文件。
 
 ## Clip
 

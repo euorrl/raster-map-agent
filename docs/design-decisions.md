@@ -267,6 +267,23 @@ clip 工具只处理：
 多 band 裁剪由上层 pipeline 循环调用。
 
 这样工具更原子，测试更简单，也方便后续接 mosaic。
+
+## V1 Mosaic 先使用 first 策略
+
+median mosaic 更适合多时相遥感合成，但需要把同一 band 的多张 GeoTIFF 对齐到统一网格，
+再做逐像素统计。对于完整 Sentinel-2 tile 来说，这会带来较高内存压力，也会让 V1 过早
+进入像素级合成复杂度。
+
+因此当前 V1 先选择：
+
+```text
+download -> first mosaic by band -> clip -> index calculation
+```
+
+重叠区域使用 rasterio 的 `first` 策略，保留排序后第一张有数据的 tif。由于上游
+scene_plan 已经按 coverage 和云量筛过 scene，这个策略足以先打通本地完整流程。median、
+cloud mask、quality mask 等更高质量合成策略留到后续版本。
+
 ## Coverage 使用真实 AOI GeoJSON
 
 STAC 搜索阶段继续使用 AOI bbox。bbox 的职责只是粗筛候选 scene：
