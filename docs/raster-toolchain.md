@@ -86,8 +86,8 @@ scene_plan.py
 -> 合并到 RasterSceneCandidateStore
 -> 按 scene_id 去重
 -> 按云量过滤
--> 每个空间分组最多保留 5 个候选 scene
--> 每个空间分组选择云量最低的 3 个 scene
+-> 全局累积候选 scene
+-> 用 coverage-aware greedy 最多选择 5 个 scene
 -> 使用 Shapely 检查选中 scene footprints 对真实 AOI GeoJSON 的覆盖
 -> 生成 RasterScenePlanResult
 
@@ -155,7 +155,23 @@ RasterDownloadResult(
 
 当前默认 `limit=100`。这是 Earth Search 单次请求允许的上限，用来降低
 STAC 返回结果被少数 tile 或少数日期占满的风险；真正进入下载的 scene
-仍由每组候选上限和 `selected_scenes_per_group` 控制。
+仍由 `max_selected_scenes` 控制。
+
+scene 选择规则：
+
+```text
+1. STAC 搜索候选 scenes
+2. 按 scene_id 去重
+3. 按 max_cloud_cover 做硬过滤
+4. 读取真实 AOI GeoJSON
+5. 每轮选择对当前未覆盖 AOI 贡献最大的 scene
+6. 如果多个 scene 的贡献接近，则选择云量更低的 scene
+7. 最多选择 max_selected_scenes 个 scene
+```
+
+这个设计不再按 tile 分组选择。原因是同一个 tile 内不同日期的真实 footprint
+可能只覆盖 tile 的不同部分；如果只按云量选，可能连续选到同一侧 footprint，
+导致 AOI 另一侧缺数据。现在的全局 greedy 会优先补未覆盖区域。
 
 后续需要：
 

@@ -224,17 +224,14 @@ def test_build_raster_scene_plan_deduplicates_scenes(monkeypatch, tmp_path):
     }
 
 
-def test_build_raster_scene_plan_limits_candidates_and_selects_lowest_cloud(
+def test_build_raster_scene_plan_uses_cloud_cover_for_similar_contribution(
     monkeypatch, tmp_path
 ):
-    # 验证同一空间分组最多保留 5 个候选，并选择云量最低的 3 个进入 plan。
+    # 验证新增覆盖贡献接近时，优先选择云量更低的 scene。
     scenes = [
-        _build_scene("S2A_32TMR_20240801_0_L2A", 12),
-        _build_scene("S2A_32TMR_20240802_0_L2A", 1),
-        _build_scene("S2A_32TMR_20240803_0_L2A", 9),
-        _build_scene("S2A_32TMR_20240804_0_L2A", 3),
-        _build_scene("S2A_32TMR_20240805_0_L2A", 6),
-        _build_scene("S2A_32TMR_20240806_0_L2A", 20),
+        _build_scene("S2A_32TMR_20240801_0_L2A", 12, _polygon(0, 0, 5, 10)),
+        _build_scene("S2A_32TMR_20240802_0_L2A", 1, _polygon(0, 0, 5, 10)),
+        _build_scene("S2A_32TNR_20240801_0_L2A", 6, _polygon(5, 0, 10, 10)),
     ]
     monkeypatch.setattr(
         "app.tools.raster_prepare.scene_plan._search_earth_search",
@@ -242,24 +239,58 @@ def test_build_raster_scene_plan_limits_candidates_and_selects_lowest_cloud(
     )
     store = RasterSceneCandidateStore()
     request = RasterScenePlanRequest(
-        bbox=[9.04, 45.35, 9.32, 45.56],
+        bbox=[0, 0, 10, 10],
+        boundary_geojson_path=_write_geojson(tmp_path, _polygon(0, 0, 10, 10)),
         start_date="2024-06-01",
         end_date="2024-08-31",
         max_cloud_cover=50,
         required_bands=["B04", "B08"],
-        max_candidate_scenes_per_group=5,
-        selected_scenes_per_group=3,
+        max_selected_scenes=5,
     )
 
     plan = build_raster_scene_plan(request, store=store)
 
-    assert list(store.groups) == ["32TMR"]
-    assert len(store.groups["32TMR"].candidates) == 5
+    assert set(store.scenes) == {
+        "S2A_32TMR_20240801_0_L2A",
+        "S2A_32TMR_20240802_0_L2A",
+        "S2A_32TNR_20240801_0_L2A",
+    }
     assert plan.scene_ids == [
         "S2A_32TMR_20240802_0_L2A",
-        "S2A_32TMR_20240804_0_L2A",
-        "S2A_32TMR_20240805_0_L2A",
+        "S2A_32TNR_20240801_0_L2A",
     ]
+
+
+def test_build_raster_scene_plan_prefers_uncovered_area_over_lower_cloud(
+    monkeypatch, tmp_path
+):
+    # 验证已覆盖区域内的低云量 scene 不会挤掉能补足缺口的 scene。
+    scenes = [
+        _build_scene("S2A_32TMR_20240801_0_L2A", 1, _polygon(0, 0, 5, 10)),
+        _build_scene("S2A_32TMR_20240802_0_L2A", 2, _polygon(0, 0, 5, 10)),
+        _build_scene("S2A_32TNR_20240801_0_L2A", 15, _polygon(5, 0, 10, 10)),
+    ]
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.scene_plan._search_earth_search",
+        lambda _: scenes,
+    )
+    request = RasterScenePlanRequest(
+        bbox=[0, 0, 10, 10],
+        boundary_geojson_path=_write_geojson(tmp_path, _polygon(0, 0, 10, 10)),
+        start_date="2024-06-01",
+        end_date="2024-08-31",
+        max_cloud_cover=50,
+        required_bands=["B04", "B08"],
+        max_selected_scenes=2,
+    )
+
+    plan = build_raster_scene_plan(request)
+
+    assert plan.scene_ids == [
+        "S2A_32TMR_20240801_0_L2A",
+        "S2A_32TNR_20240801_0_L2A",
+    ]
+    assert plan.diagnostics.coverage_status == "covered"
 
 
 def test_build_raster_scene_plan_accumulates_existing_store(monkeypatch, tmp_path):
@@ -285,12 +316,12 @@ def test_build_raster_scene_plan_accumulates_existing_store(monkeypatch, tmp_pat
     build_raster_scene_plan(request, store=store)
     plan = build_raster_scene_plan(request, store=store)
 
-    assert set(store.groups) == {"32TMR", "32TNR"}
-    assert plan.scene_ids == [
-        "S2A_32TMR_20240701_0_L2A",
+    assert set(store.scenes) == {
         "S2A_32TMR_20240801_0_L2A",
         "S2A_32TNR_20240701_0_L2A",
-    ]
+        "S2A_32TMR_20240701_0_L2A",
+    }
+    assert plan.scene_ids == ["S2A_32TMR_20240701_0_L2A"]
 
 
 def test_build_raster_scene_plan_marks_covered_scene_plan(monkeypatch, tmp_path):

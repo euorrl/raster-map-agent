@@ -16,7 +16,7 @@ def main() -> None:
     configure_logging("INFO")
 
     request = AOIRequest(
-        query="Milano, Lombardy, Italy",
+        query="Changsha, Hunan, China",
         workspace_dir=Path("data/speak2"),
     )
 

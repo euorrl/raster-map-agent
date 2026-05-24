@@ -83,7 +83,7 @@ workflow 顺序是否清楚
 - Earth Search STAC 搜索
 - scene plan 与下载执行解耦
 - 多次查询结果可累积到候选 store
-- 候选 scene 按空间分组并选择低云量 scene
+- 候选 scene 改为全局累积，并用 coverage-aware greedy 选择 scene
 - 使用 Shapely 生成 scene plan coverage diagnostics
 - Sentinel-2 L2A `B04` / `B08` 下载
 - RFC3339 datetime 修正

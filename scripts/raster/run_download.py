@@ -20,10 +20,15 @@ def main() -> None:
 
     store = RasterSceneCandidateStore()
     workspace_dir = Path("data/speak2")
-    boundary_geojson_path = workspace_dir / "aoi" / "Chengdu_Sichuan_China.geojson"
+    boundary_geojson_path = workspace_dir / "aoi" / "Changsha_Hunan_China.geojson"
     plan_requests = (
         RasterScenePlanRequest(
-            bbox=[102.989623, 30.0916339, 104.8948475, 31.4370968],
+            bbox=[
+    111.8908381,
+    27.8512095,
+    114.2560358,
+    28.6644154
+  ],
             boundary_geojson_path=boundary_geojson_path,
             start_date="2023-12-27",
             end_date="2024-01-09",
@@ -33,7 +38,12 @@ def main() -> None:
             limit=100,
         ),
         RasterScenePlanRequest(
-            bbox=[102.989623, 30.0916339, 104.8948475, 31.4370968],
+            bbox=[
+    111.8908381,
+    27.8512095,
+    114.2560358,
+    28.6644154
+  ],
             boundary_geojson_path=boundary_geojson_path,
             start_date="2023-12-27",
             end_date="2024-01-09",
@@ -51,7 +61,7 @@ def main() -> None:
     if plan is None:
         raise RuntimeError("No raster scene plan was built.")
 
-    print("candidate groups:", list(store.groups))
+    print("candidate scenes:", list(store.scenes))
     print("planned scenes:", plan.scene_ids)
     print(plan.diagnostics.model_dump_json(indent=2))
 

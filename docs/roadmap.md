@@ -46,7 +46,8 @@ AOI bbox + AOI GeoJSON
 ```text
 搜索候选 scenes
 过滤云量
-按空间分组保留候选 scenes
+全局累积候选 scenes
+按 coverage-aware greedy 选择最多 `max_selected_scenes` 个 scene
 读取 coverage diagnostics
 下载通过规划的 required bands
 按 band 调用 rasterio merge

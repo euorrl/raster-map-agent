@@ -168,7 +168,7 @@ Sentinel-2 单 tile 大约 100km x 100km。
 scene_plan -> download
 ```
 
-`scene_plan` 负责候选累积、分组和选择；`download` 只负责按 plan 下载。
+`scene_plan` 负责候选累积和选择；`download` 只负责按 plan 下载。
 scene plan 会用 Shapely 将选中 scene 的 footprint 做 union，并与真实 AOI
 GeoJSON geometry 比较覆盖比例。诊断结果写入 `RasterScenePlanResult.diagnostics`，
 作为后续局部 ReAct 的 observation。
@@ -202,17 +202,38 @@ z = 时间
 ```text
 搜索与 bbox 相交的 scene
 按云量过滤
-按空间分组保留候选
-每组选择云量较低的 scene
+全局累积候选 scene
+每轮选择对 AOI 未覆盖区域贡献最大的 scene
+贡献接近时再选择云量较低的 scene
 按 band mosaic
 再 clip
 ```
 
 scene plan 默认 `limit=100`，用单次查询上限尽量增加候选覆盖面；最终
-下载量仍由每组候选上限和每组选中数量控制。
+下载量由 `max_selected_scenes` 控制。
 
 当前 coverage diagnostics 已经使用真实 scene footprint union 和真实 AOI
 GeoJSON geometry。bbox 只保留为 STAC 搜索参数，不再作为 coverage 判断对象。
+
+## Scene 选择改为全局 coverage-aware greedy
+
+早期实现按 Sentinel-2 tile 分组，并在每个 tile 内选择云量最低的 scene。
+后来发现这个假设不稳：同一个 tile 内，不同日期/轨道的真实 footprint 可能
+只覆盖 tile 的不同部分。如果某一侧 footprint 的云量整体更低，按云量排序会
+连续选择同一侧 scene，导致 AOI 另一侧缺数据。
+
+因此 V1 改为：
+
+```text
+所有候选 scene 进入全局候选池
+每轮计算 scene.geometry 与当前未覆盖 AOI 的新增交集面积
+优先选择新增贡献最大的 scene
+如果贡献接近，再选择云量更低的 scene
+最多选择 max_selected_scenes 个 scene
+```
+
+这里不再维护 tile 分组。tile 合并、重叠区 median/mean 等像素层逻辑放到
+`mosaic` 模块处理；`scene_plan` 只处理 metadata 层的 scene 选择。
 
 ## Clip 的 nodata 策略
 

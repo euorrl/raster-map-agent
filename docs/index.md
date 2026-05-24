@@ -8,7 +8,7 @@ Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。
 用户请求
 -> planner
 -> AOI
--> download
+-> raster prepare
 -> mosaic
 -> clip
 -> index calculation
@@ -18,26 +18,34 @@ Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。
 -> LangGraph workflow
 ```
 
-## Contents
+## 当前重点
 
-- [开发阶段记录](development-log.md)
-- [项目架构](architecture.md)
-- [栅格工具链](raster-toolchain.md)
-- [关键设计决策](design-decisions.md)
-- [路线图](roadmap.md)
-
-## Current Focus
-
-当前重点是先补齐本地真实工具链：
+当前开发重点是先跑通真实的本地工具链：
 
 ```text
 Nominatim AOI
--> Sentinel-2 download
+-> Sentinel-2 scene planning
 -> coverage diagnostics
+-> raster download
 -> multi-scene mosaic
 -> AOI clip
 -> NDVI
 -> preview
 ```
 
-随后再接入 planner、局部 ReAct、answer 和 LangGraph workflow，形成完整本地 Agent。
+其中 `scene_plan` 是当前最重要的算法模块。它负责从 STAC 返回的候选 scene 中选择一个尽量少、尽量低云、同时尽量覆盖 AOI 的组合。
+
+相关推理过程见：
+
+- [Scene 选择算法迭代](scene-selection-evolution.md)
+- [栅格工具链](raster-toolchain.md)
+- [关键设计决策](design-decisions.md)
+
+## 文档导航
+
+- [开发阶段记录](development-log.md)
+- [项目架构](architecture.md)
+- [栅格工具链](raster-toolchain.md)
+- [Scene 选择算法迭代](scene-selection-evolution.md)
+- [关键设计决策](design-decisions.md)
+- [路线图](roadmap.md)

@@ -14,7 +14,6 @@ from app.tools.raster_prepare.schemas import (
     RasterDownloadAsset,
     RasterDownloadError,
     RasterScene,
-    RasterSceneCandidateGroup,
     RasterSceneCandidateStore,
     RasterScenePlanDiagnostics,
     RasterScenePlanResult,
@@ -47,7 +46,9 @@ def build_raster_scene_plan(
     return build_raster_scene_plan_from_candidates(
         store=store,
         required_bands=request.required_bands,
-        selected_scenes_per_group=request.selected_scenes_per_group,
+        max_selected_scenes=request.max_selected_scenes,
+        contribution_tolerance=request.contribution_tolerance,
+        min_scene_overlap_ratio=request.min_scene_overlap_ratio,
         data_source=request.data_source,
         boundary_geojson_path=request.boundary_geojson_path,
     )
@@ -69,39 +70,35 @@ def update_raster_scene_candidates(
     scenes = _filter_scenes_by_cloud_cover(scenes, request.max_cloud_cover)
 
     for scene in scenes:
-        group_id = _scene_group_id(scene)
-        group = store.groups.setdefault(
-            group_id,
-            RasterSceneCandidateGroup(group_id=group_id),
-        )
-
-        if any(candidate.scene_id == scene.scene_id for candidate in group.candidates):
-            continue
-
-        group.candidates.append(scene)
-        group.candidates = _sort_scenes_by_cloud_cover(group.candidates)
-        group.candidates = group.candidates[: request.max_candidate_scenes_per_group]
+        store.scenes.setdefault(scene.scene_id, scene)
 
 
 def build_raster_scene_plan_from_candidates(
     store: RasterSceneCandidateStore,
     required_bands: list[str],
-    selected_scenes_per_group: int,
+    max_selected_scenes: int,
+    contribution_tolerance: float,
+    min_scene_overlap_ratio: float,
     data_source: str = DEFAULT_RASTER_DATA_SOURCE,
     boundary_geojson_path: str | None = None,
 ) -> RasterScenePlanResult:
-    """从候选池中选择每组云量最低的 scenes，并生成下载计划。"""
+    """从全局候选池中选择覆盖贡献最大的 scenes，并生成下载计划。"""
 
     config = get_raster_data_source_config(data_source)
-    selected_scenes = []
+    candidate_scenes = list(store.scenes.values())
 
-    for group in store.groups.values():
-        selected_scenes.extend(group.candidates[:selected_scenes_per_group])
-
-    if not selected_scenes:
+    if not candidate_scenes:
         raise RasterDownloadError(
             "No raster scenes found for the requested parameters."
         )
+
+    selected_scenes = _select_scenes_by_coverage(
+        candidate_scenes=candidate_scenes,
+        boundary_geojson_path=boundary_geojson_path,
+        max_selected_scenes=max_selected_scenes,
+        contribution_tolerance=contribution_tolerance,
+        min_scene_overlap_ratio=min_scene_overlap_ratio,
+    )
 
     assets = []
     for scene in selected_scenes:
@@ -222,16 +219,6 @@ def _deduplicate_scenes_by_id(scenes: list[RasterScene]) -> list[RasterScene]:
     return deduplicated_scenes
 
 
-def _scene_group_id(scene: RasterScene) -> str:
-    """从 Sentinel-2 scene_id 中提取空间分组 ID。"""
-
-    parts = scene.scene_id.split("_")
-    if len(parts) >= 2 and parts[1]:
-        return parts[1]
-
-    return scene.scene_id
-
-
 def _sort_scenes_by_cloud_cover(scenes: list[RasterScene]) -> list[RasterScene]:
     """按云量从低到高排序，云量缺失的 scene 放到最后。"""
 
@@ -255,6 +242,118 @@ def _filter_scenes_by_cloud_cover(
         for scene in scenes
         if scene.cloud_cover is not None and scene.cloud_cover < max_cloud_cover
     ]
+
+
+def _select_scenes_by_coverage(
+    candidate_scenes: list[RasterScene],
+    boundary_geojson_path: str | None,
+    max_selected_scenes: int,
+    contribution_tolerance: float,
+    min_scene_overlap_ratio: float,
+) -> list[RasterScene]:
+    """优先选择对 AOI 未覆盖区域贡献最大的 scenes。"""
+
+    fallback_scenes = _sort_scenes_by_cloud_cover(candidate_scenes)[
+        :max_selected_scenes
+    ]
+
+    if boundary_geojson_path is None:
+        return fallback_scenes
+
+    try:
+        aoi_geometry = _load_aoi_geometry(boundary_geojson_path)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return fallback_scenes
+
+    if aoi_geometry.area == 0:
+        return fallback_scenes
+
+    selected_scenes = []
+    remaining_scenes = list(candidate_scenes)
+    uncovered_geometry = aoi_geometry
+
+    while remaining_scenes and len(selected_scenes) < max_selected_scenes:
+        scored_scenes = []
+        for scene in remaining_scenes:
+            geometry = _scene_geometry(scene)
+            if geometry is None:
+                continue
+
+            overlap_area = geometry.intersection(aoi_geometry).area
+            overlap_ratio = overlap_area / aoi_geometry.area
+            if overlap_ratio < min_scene_overlap_ratio:
+                continue
+
+            contribution_area = geometry.intersection(uncovered_geometry).area
+            if contribution_area <= 0:
+                continue
+
+            scored_scenes.append((scene, geometry, contribution_area))
+
+        if not scored_scenes:
+            break
+
+        max_contribution = max(score[2] for score in scored_scenes)
+        competitive_scenes = [
+            score
+            for score in scored_scenes
+            if score[2] >= max_contribution * contribution_tolerance
+        ]
+        selected_scene, selected_geometry, _contribution = min(
+            competitive_scenes,
+            key=lambda score: (
+                score[0].cloud_cover is None,
+                score[0].cloud_cover if score[0].cloud_cover is not None else 101,
+                -score[2],
+                score[0].scene_id,
+            ),
+        )
+
+        selected_scenes.append(selected_scene)
+        remaining_scenes = [
+            scene
+            for scene in remaining_scenes
+            if scene.scene_id != selected_scene.scene_id
+        ]
+        uncovered_geometry = uncovered_geometry.difference(selected_geometry)
+
+        if _coverage_ratio(aoi_geometry, unary_union([selected_geometry])) >= 1:
+            break
+
+        selected_geometries = [
+            geometry
+            for geometry in (_scene_geometry(scene) for scene in selected_scenes)
+            if geometry is not None
+        ]
+        if selected_geometries:
+            coverage_ratio = _coverage_ratio(
+                aoi_geometry,
+                unary_union(selected_geometries),
+            )
+            if coverage_ratio >= COVERAGE_COMPLETE_THRESHOLD:
+                break
+
+    if selected_scenes:
+        return selected_scenes
+
+    return fallback_scenes
+
+
+def _scene_geometry(scene: RasterScene):
+    """读取 scene footprint geometry，无法解析时返回 None。"""
+
+    if not scene.geometry:
+        return None
+
+    try:
+        geometry = shape(scene.geometry)
+    except (TypeError, ValueError):
+        return None
+
+    if geometry.is_empty:
+        return None
+
+    return geometry
 
 
 def _extract_band_urls(

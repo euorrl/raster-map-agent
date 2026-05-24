@@ -112,10 +112,10 @@ class RasterScenePlanRequest(BaseModel):
         max_cloud_cover: 允许的最大云量百分比。
         required_bands: 需要下载的波段，例如 ``B04`` 和 ``B08``。
         data_source: 上游 plan 选择的数据源。V1 先只实现 ``sentinel2``。
-        limit: 最多请求的候选 scene 数量。V1 默认请求 100 条，
-            避免返回结果被少数空间分组占满。
-        max_candidate_scenes_per_group: 每个空间分组最多保留的候选 scene 数量。
-        selected_scenes_per_group: 每个空间分组最终进入下载 plan 的 scene 数量。
+        limit: 最多请求的候选 scene 数量。V1 默认请求 100 条。
+        max_selected_scenes: 最终进入下载 plan 的最大 scene 数量。
+        contribution_tolerance: 新增覆盖贡献接近最优值时，允许用云量决定优先级。
+        min_scene_overlap_ratio: 候选 scene 至少需要覆盖 AOI 的比例。
     """
 
     bbox: list[float] = Field(min_length=4, max_length=4)
@@ -126,17 +126,12 @@ class RasterScenePlanRequest(BaseModel):
     required_bands: list[str] = Field(min_length=1)
     data_source: str = DEFAULT_RASTER_DATA_SOURCE
     limit: int = Field(default=100, ge=1, le=100)
-    max_candidate_scenes_per_group: int = Field(default=5, ge=1, le=20)
-    selected_scenes_per_group: int = Field(default=3, ge=1, le=10)
+    max_selected_scenes: int = Field(default=20, ge=1, le=100)
+    contribution_tolerance: float = Field(default=0.95, ge=0, le=1)
+    min_scene_overlap_ratio: float = Field(default=0, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_scene_plan_request(self):
-        if self.selected_scenes_per_group > self.max_candidate_scenes_per_group:
-            raise ValueError(
-                "selected_scenes_per_group cannot exceed "
-                "max_candidate_scenes_per_group"
-            )
-
         config = get_raster_data_source_config(self.data_source)
         unsupported_bands = [
             band for band in self.required_bands if band not in config.band_assets
@@ -173,17 +168,10 @@ class RasterScene(BaseModel):
     assets: dict[str, str] = Field(default_factory=dict)
 
 
-class RasterSceneCandidateGroup(BaseModel):
-    """同一空间分组下的候选 scene 集合。"""
-
-    group_id: str
-    candidates: list[RasterScene] = Field(default_factory=list)
-
-
 class RasterSceneCandidateStore(BaseModel):
     """可跨多次 scene plan 调用累积的候选 scene 池。"""
 
-    groups: dict[str, RasterSceneCandidateGroup] = Field(default_factory=dict)
+    scenes: dict[str, RasterScene] = Field(default_factory=dict)
 
 
 class RasterDownloadAsset(BaseModel):
