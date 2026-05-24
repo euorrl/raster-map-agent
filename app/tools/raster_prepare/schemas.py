@@ -64,8 +64,8 @@ class AOIResult(BaseModel):
     source: str
 
 
-class RasterDownloadRequest(BaseModel):
-    """栅格数据下载请求。
+class RasterScenePlanRequest(BaseModel):
+    """栅格 scene 规划请求。
 
     Attributes:
         bbox: 查询范围，顺序为 ``[min_lon, min_lat, max_lon, max_lat]``。
@@ -73,7 +73,6 @@ class RasterDownloadRequest(BaseModel):
         end_date: 查询结束日期，格式为 ``YYYY-MM-DD``。
         max_cloud_cover: 允许的最大云量百分比。
         required_bands: 需要下载的波段，例如 ``B04`` 和 ``B08``。
-        output_dir: 本地输出目录。
         provider: 数据提供方标识。V1 默认使用 Earth Search。
         collection: STAC collection 名称。
         limit: 最多请求的候选 scene 数量。
@@ -84,16 +83,9 @@ class RasterDownloadRequest(BaseModel):
     end_date: str
     max_cloud_cover: float = Field(ge=0, le=100)
     required_bands: list[str] = Field(min_length=1)
-    workspace_dir: Path
     provider: str = "earth_search"
     collection: str = EARTH_SEARCH_COLLECTION
     limit: int = Field(default=10, ge=1, le=100)
-
-    @property
-    def output_dir(self) -> Path:
-        """原始 raster 自动保存目录。"""
-
-        return self.workspace_dir / RASTER_DIRNAME
 
     @field_validator("required_bands")
     @classmethod
@@ -119,8 +111,38 @@ class RasterScene(BaseModel):
     assets: dict[str, str] = Field(default_factory=dict)
 
 
+class RasterDownloadAsset(BaseModel):
+    """下载计划中的单个 scene band asset。"""
+
+    scene_id: str
+    band: str
+    url: str
+
+
+class RasterScenePlanResult(BaseModel):
+    """栅格 scene 规划结果。"""
+
+    scene_ids: list[str]
+    assets: list[RasterDownloadAsset]
+    provider: str
+    collection: str
+
+
+class RasterDownloadRequest(BaseModel):
+    """栅格下载请求。"""
+
+    plan: RasterScenePlanResult
+    workspace_dir: Path
+
+    @property
+    def output_dir(self) -> Path:
+        """原始 raster 自动保存目录。"""
+
+        return self.workspace_dir / RASTER_DIRNAME
+
+
 class RasterDownloadResult(BaseModel):
-    """栅格数据下载结果。"""
+    """栅格下载结果。"""
 
     scene_ids: list[str]
     band_paths: dict[str, list[str]]

@@ -1,201 +1,82 @@
-"""基于尺度的 raster 数据下载工具。"""
+"""raster 数据下载工具。"""
 
-import json
 import shutil
-from datetime import date, datetime
 from pathlib import Path
-from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 from app.tools.raster_prepare.schemas import (
-    EARTH_SEARCH_BAND_ASSETS,
+    RasterDownloadAsset,
     RasterDownloadError,
     RasterDownloadRequest,
     RasterDownloadResult,
-    RasterScene,
 )
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-EARTH_SEARCH_SEARCH_URL = "https://earth-search.aws.element84.com/v1/search"
 
-
-def download_raster_bands(request: RasterDownloadRequest) -> RasterDownloadResult:
-    """搜索并下载请求中的栅格波段。
+def download_raster_assets(request: RasterDownloadRequest) -> RasterDownloadResult:
+    """根据下载计划下载栅格 asset。
 
     Args:
-        request: 栅格数据下载请求。
+        request: 包含下载计划和任务根目录的 asset 下载请求。
 
     Returns:
-        下载结果，包含通过云量过滤的 scenes 和各波段本地路径列表。
+        下载结果，包含各波段本地路径列表。
 
     Raises:
-        RasterDownloadError: 当没有候选 scene、缺少波段 asset 或下载失败时抛出。
+        RasterDownloadError: 当 asset 下载失败时抛出。
     """
 
-    logger.info(
-        "Searching raster data provider=%s collection=%s bbox=%s",
-        request.provider,
-        request.collection,
-        request.bbox,
-    )
-    scenes = _search_earth_search(request)
-    scenes = _filter_scenes_by_cloud_cover(scenes, request.max_cloud_cover)
-
-    if not scenes:
-        raise RasterDownloadError(
-            "No raster scenes found for the requested parameters."
-        )
-
     request.output_dir.mkdir(parents=True, exist_ok=True)
-    band_paths: dict[str, list[str]] = {band: [] for band in request.required_bands}
+    band_paths: dict[str, list[str]] = {
+        band: [] for band in _planned_bands(request.plan.assets)
+    }
 
-    for scene in scenes:
-        band_urls = _extract_band_urls(scene, request.required_bands)
-
-        for band, url in band_urls.items():
-            output_path = _build_band_output_path(
-                request.output_dir,
-                scene,
-                band,
-                url,
-            )
-            logger.info(
-                "Downloading raster band=%s scene=%s",
-                band,
-                scene.scene_id,
-            )
-            _download_asset(url, output_path)
-            band_paths[band].append(str(output_path))
+    for asset in request.plan.assets:
+        output_path = _build_band_output_path(request.output_dir, asset)
+        logger.info(
+            "Downloading raster band=%s scene=%s",
+            asset.band,
+            asset.scene_id,
+        )
+        _download_asset(asset.url, output_path)
+        band_paths[asset.band].append(str(output_path))
 
     return RasterDownloadResult(
-        scene_ids=[scene.scene_id for scene in scenes],
+        scene_ids=request.plan.scene_ids,
         band_paths=band_paths,
-        provider=request.provider,
-        collection=request.collection,
+        provider=request.plan.provider,
+        collection=request.plan.collection,
     )
 
 
-def _search_earth_search(request: RasterDownloadRequest) -> list[RasterScene]:
-    """调用 Earth Search STAC API 搜索候选 scene。"""
+def _planned_bands(assets: list[RasterDownloadAsset]) -> list[str]:
+    """按首次出现顺序提取 plan 中的 band 名称。"""
 
-    payload = {
-        "collections": [request.collection],
-        "bbox": request.bbox,
-        "datetime": _build_stac_datetime_range(request.start_date, request.end_date),
-        "limit": request.limit,
-    }
+    bands = []
+    seen_bands = set()
 
-    response = _post_json(EARTH_SEARCH_SEARCH_URL, payload)
-    features = response.get("features", [])
+    for asset in assets:
+        if asset.band in seen_bands:
+            continue
 
-    return [_parse_stac_item(feature) for feature in features]
+        seen_bands.add(asset.band)
+        bands.append(asset.band)
 
-
-def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """向指定 URL 发送 JSON POST 请求并解析 JSON 响应。"""
-
-    body = json.dumps(payload).encode("utf-8")
-    request = Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
-
-    try:
-        with urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as error:
-        error_body = error.read().decode("utf-8", errors="replace")
-        raise RasterDownloadError(
-            f"Failed to query STAC API: {url} " f"(HTTP {error.code}: {error_body})"
-        ) from error
-    except (OSError, URLError, json.JSONDecodeError) as error:
-        raise RasterDownloadError(f"Failed to query STAC API: {url}") from error
-
-
-def _build_stac_datetime_range(start_date: str, end_date: str) -> str:
-    """将简单日期范围转换为 STAC API 需要的 RFC3339 时间范围。"""
-
-    start = _parse_date(start_date)
-    end = _parse_date(end_date)
-
-    return f"{start.isoformat()}T00:00:00Z/{end.isoformat()}T23:59:59Z"
-
-
-def _parse_date(value: str) -> date:
-    """解析 ``YYYY-MM-DD`` 日期字符串。"""
-
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError as error:
-        raise RasterDownloadError(f"Invalid date format: {value}") from error
-
-
-def _parse_stac_item(item: dict[str, Any]) -> RasterScene:
-    """将原始 STAC Item 转换为内部 scene 模型。"""
-
-    properties = item.get("properties", {})
-    assets = {
-        asset_key: asset["href"]
-        for asset_key, asset in item.get("assets", {}).items()
-        if "href" in asset
-    }
-
-    return RasterScene(
-        scene_id=item["id"],
-        datetime=properties.get("datetime"),
-        cloud_cover=properties.get("eo:cloud_cover"),
-        assets=assets,
-    )
-
-
-def _filter_scenes_by_cloud_cover(
-    scenes: list[RasterScene],
-    max_cloud_cover: float,
-) -> list[RasterScene]:
-    """按最大云量阈值过滤候选 scene。"""
-
-    return [
-        scene
-        for scene in scenes
-        if scene.cloud_cover is not None and scene.cloud_cover < max_cloud_cover
-    ]
-
-
-def _extract_band_urls(scene: RasterScene, required_bands: list[str]) -> dict[str, str]:
-    """从 scene assets 中提取请求波段对应的下载 URL。"""
-
-    band_urls = {}
-
-    for band in required_bands:
-        asset_key = EARTH_SEARCH_BAND_ASSETS[band]
-        asset_url = scene.assets.get(asset_key)
-
-        if not asset_url:
-            raise RasterDownloadError(
-                f"Scene {scene.scene_id} is missing asset for band {band}."
-            )
-
-        band_urls[band] = asset_url
-
-    return band_urls
+    return bands
 
 
 def _build_band_output_path(
     output_dir: Path,
-    scene: RasterScene,
-    band: str,
-    url: str,
+    asset: RasterDownloadAsset,
 ) -> Path:
     """根据 scene、波段和源 URL 构造本地输出路径。"""
 
-    suffix = Path(urlparse(url).path).suffix or ".tif"
-    return output_dir / f"{scene.scene_id}_{band}{suffix}"
+    suffix = Path(urlparse(asset.url).path).suffix or ".tif"
+    return output_dir / f"{asset.scene_id}_{asset.band}{suffix}"
 
 
 def _download_asset(url: str, output_path: Path) -> None:

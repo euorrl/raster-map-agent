@@ -51,7 +51,7 @@ AOIRequest(
 ```python
 AOIResult(
     name="杭州市, 浙江省, 中国",
-    boundary_geojson_path="data/aoi/Hangzhou_Zhejiang_China.geojson",
+    boundary_geojson_path="data/speak1/aoi/Hangzhou_Zhejiang_China.geojson",
     bbox=[118.3396948, 29.1888286, 120.7254851, 30.5648514],
     area_km2=35275.45,
     spatial_scale="regional",
@@ -79,17 +79,35 @@ New York City, New York, United States
 
 ## Download
 
+当前 download 已拆成两层：
+
+```text
+scene_plan.py
+-> 搜索 STAC metadata
+-> 按 scene_id 去重
+-> 按云量过滤
+-> 生成 RasterScenePlanResult
+
+download.py
+-> 按 RasterScenePlanResult 下载 band asset
+-> 返回本地 tif 路径
+```
+
 当前实现：Earth Search STAC + COG。
 
 输入：
 
 ```python
-RasterDownloadRequest(
+RasterScenePlanRequest(
     bbox=[min_lon, min_lat, max_lon, max_lat],
     start_date="2024-06-01",
     end_date="2024-08-31",
     max_cloud_cover=20,
     required_bands=["B04", "B08"],
+)
+
+RasterDownloadRequest(
+    plan=plan,
     workspace_dir=Path("data/speak1"),
 )
 ```

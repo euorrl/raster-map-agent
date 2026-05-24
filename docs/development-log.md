@@ -74,6 +74,7 @@ workflow 顺序是否清楚
 
 完成内容：
 
+- `RasterScenePlanRequest`
 - `RasterDownloadRequest`
 - `RasterScene`
 - `RasterDownloadResult`
