@@ -24,17 +24,19 @@ Agent 基础：
 - logging
 - index registry 雏形
 - AOI 解析
-- 单 scene 下载
+- Sentinel-2 scene plan
+- 多 scene band asset 下载
 - GeoTIFF clip
 
-## 下一阶段：多 scene 下载与 mosaic
+## 下一阶段：coverage diagnostics 与 mosaic
 
 目标：
 
 ```text
 AOI bbox
 -> 搜索多个 Sentinel-2 scenes
--> 下载覆盖区域所需的多个 tile
+-> 判断候选 scene 是否覆盖 AOI bbox
+-> 下载规划选中的 tile / scene
 -> 每个 band 分别 mosaic
 ```
 
@@ -43,12 +45,15 @@ AOI bbox
 ```text
 搜索候选 scenes
 过滤云量
-下载候选 scenes 的 required bands
+按空间分组保留候选 scenes
+生成 coverage diagnostics
+下载通过规划的 required bands
 按 band 调用 rasterio merge
 输出 mosaic_B04.tif / mosaic_B08.tif
 ```
 
-暂不追求最优 scene 组合算法，先保证完整链路能跑。
+暂不追求严格 polygon union 覆盖检测，先做 bbox 级 coverage diagnostics，
+作为后续局部 ReAct 的 observation。
 
 ## 下一阶段：指数计算与渲染
 

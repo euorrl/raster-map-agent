@@ -145,13 +145,13 @@ RasterDownloadResult(
 
 - bbox 只用于搜索，不用于裁剪下载内容
 - STAC 搜索返回与 bbox 相交的 scene
-- 当前会下载所有通过云量过滤的 scene
+- 当前会下载 `RasterScenePlanResult` 中选中的 scene asset
 - 当前还没有检测这些 scene 是否完整覆盖 AOI
 - 大 AOI 可能无法被单个 Sentinel-2 tile 完整覆盖
 
 后续需要：
 
-- 检测通过云量过滤后的 scenes 是否完整覆盖 AOI
+- 对规划选中的 scenes 做 bbox 级 coverage diagnostics
 - 将同一 band 的多个 scene/tile 合成为一张待计算 GeoTIFF
 
 ## Mosaic

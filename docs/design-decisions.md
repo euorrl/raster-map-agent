@@ -88,7 +88,7 @@ diagnostics 明确反馈当前 V1 流程不适合，而不是自动切换 provid
 新的输入：
 
 ```text
-query + output_dir
+query + workspace_dir
 ```
 
 LLM 负责把用户地点整理成：
@@ -115,7 +115,7 @@ source
 
 - download 使用 bbox
 - clip 使用 boundary_geojson_path
-- strategy 使用全局 plan 的 data_source
+- 全局 planner / ReAct 使用 data_source
 
 ## GeoJSON 作为主边界格式
 
@@ -150,23 +150,27 @@ bbox 搜索到的是与区域相交的 scene/tile
 download -> mosaic -> clip
 ```
 
-## 单 scene 下载不足以支持大 AOI
+## scene plan 需要 coverage diagnostics
 
 Sentinel-2 单 tile 大约 100km x 100km。
 
 城市圈、省、市等 AOI 很可能跨多个 tile。
 
-当前单 scene 下载会出现：
+如果只按云量选择 scene，可能会出现：
 
 - 只覆盖 AOI 一部分
 - 选择到云量低但空间覆盖差的 tile
 - GeoTIFF.io 中看到 tile 与 AOI 不完全重合
 
-下一步必须实现：
+当前已经把下载拆成两步：
 
 ```text
-multi-scene download + mosaic
+scene_plan -> download
 ```
+
+`scene_plan` 负责候选累积、分组和选择；`download` 只负责按 plan 下载。
+下一步需要在 scene plan 里加入 coverage diagnostics，作为后续局部 ReAct
+的 observation。
 
 ## Scene 选择算法思路
 
@@ -187,15 +191,18 @@ z = 时间
 3. 云量低
 ```
 
-V1 可以先做简单版本：
+当前 V1 先做简单版本：
 
 ```text
-下载所有与 bbox 相交且云量低于阈值的 scene
+搜索与 bbox 相交的 scene
+按云量过滤
+按空间分组保留候选
+每组选择云量较低的 scene
 按 band mosaic
 再 clip
 ```
 
-后续再优化选择算法。
+后续 coverage diagnostics 先做 bbox 级判断，不急于实现严格 polygon union。
 
 ## Clip 的 nodata 策略
 

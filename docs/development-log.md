@@ -81,6 +81,9 @@ workflow 顺序是否清楚
 - `RasterDownloadResult`
 - `data_source` 接口参数，V1 固定为 `sentinel2`，作为后续扩展预留协议
 - Earth Search STAC 搜索
+- scene plan 与下载执行解耦
+- 多次查询结果可累积到候选 store
+- 候选 scene 按空间分组并选择低云量 scene
 - Sentinel-2 L2A `B04` / `B08` 下载
 - RFC3339 datetime 修正
 - Earth Search 400 错误信息增强
@@ -90,7 +93,7 @@ workflow 顺序是否清楚
 
 - bbox 当前只用于搜索，不代表只下载 bbox 内数据
 - STAC 搜索返回的是与 bbox 相交的 scene，不保证完整覆盖 bbox
-- 当前单 scene 下载对大 AOI 不够，需要后续多 scene 下载和 mosaic
+- 多 scene 下载已经具备雏形，但还需要 coverage diagnostics 和 mosaic
 
 ## 阶段 5：AOI 边界解析探索
 
@@ -104,7 +107,7 @@ workflow 顺序是否清楚
 - 请求 geoBoundaries metadata
 - 下载 GeoJSON
 - 匹配行政区 feature
-- 计算 bbox、面积和 scale
+- 计算 bbox 和面积
 
 关键问题：
 
@@ -182,7 +185,8 @@ nodata 策略明确
 下一座关键桥是：
 
 ```text
-多 scene 下载 + tile 合并
+coverage diagnostics + tile 合并
 ```
 
-这会解决 bbox 较大时单 scene 无法覆盖 AOI 的问题。
+这会让工具链先判断 scene plan 是否足够覆盖 AOI，再把同一 band 的
+多个 tile 合并为一张待计算 GeoTIFF。

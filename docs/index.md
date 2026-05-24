@@ -33,6 +33,7 @@ Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。
 ```text
 Nominatim AOI
 -> Sentinel-2 download
+-> coverage diagnostics
 -> multi-scene mosaic
 -> AOI clip
 -> NDVI

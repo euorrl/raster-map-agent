@@ -90,6 +90,7 @@ answer_node
 app/tools/raster_prepare/
   schemas.py
   aoi.py
+  scene_plan.py
   download.py
   mosaic.py
   clip.py
@@ -100,7 +101,8 @@ app/tools/raster_prepare/
 
 - `schemas.py`：工具请求和结果模型
 - `aoi.py`：AOI 边界解析
-- `download.py`：STAC/COG 数据搜索与下载
+- `scene_plan.py`：搜索 STAC metadata，累积候选 scene，并生成下载计划
+- `download.py`：按下载计划拉取 COG band asset
 - `mosaic.py`：后续实现 tile / scene 合并
 - `clip.py`：按 AOI GeoJSON 裁剪 GeoTIFF
 - `prepare.py`：后续编排 AOI -> download -> mosaic -> clip
