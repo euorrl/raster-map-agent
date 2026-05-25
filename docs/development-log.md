@@ -59,7 +59,7 @@ workflow 顺序是否清楚
 - `get_logger`
 - 日志测试
 - 补全必要的 `__init__.py`
-- 整理 registry，拆出 `app/registry/indices.py`
+- 整理 registry，拆出指数和数据源配置
 
 关键判断：
 
@@ -247,10 +247,11 @@ source
 
 关键设计：
 
-- 每次运行在 `data/` 下创建独立 UUID workspace
-- 中间目录包括 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/`
+- workspace 由 `create_workspace` 在流程开始前创建，prepare 只接收 `workspace_dir`
+- 对外接收 `index_name + data_source`，并通过 registry 展开 required bands
+- 任务目录包括 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/`、`output/`
 - 成功完成 clip 后删除 `raster/` 和 `mosaic_raster/`
-- 保留 `aoi/` 和 `clipped_raster/`
+- 保留 `aoi/`、`clipped_raster/` 和 `output/`
 - 返回后续指数计算需要的 band paths、scene ids 和 diagnostics
 
 这个阶段证明：数据准备模块已经能为 NDVI 计算提供真实裁剪后的 B04/B08 输入。
@@ -268,13 +269,36 @@ scene plan 可返回 coverage diagnostics
 coverage 默认使用最低可接受阈值而不是 100% 硬门槛
 同一 band 的多张 tif 可先用 first 策略合并成 mosaic GeoTIFF
 prepare pipeline 可串联 AOI、scene plan、download、mosaic、clip
-每次 prepare 运行会创建独立 UUID workspace，并在成功后清理中间 raster
+每次任务先创建独立 UUID workspace，prepare 在该 workspace 内运行并在成功后清理中间 raster
+```
+
+## 阶段 10：指数计算工具骨架与真实计算
+
+本阶段新增 `app/tools/index_calculation/`。
+
+关键设计：
+
+- 计算模块接收 `workspace_dir`
+- 从 `clipped_raster/` 中按 `band_roles` 推导输入 band 路径
+- 按 registry 传下来的 `index_formula` 计算指数
+- 输出只返回最终 GeoTIFF 路径 `index_tif_path`
+- 当前公式执行只支持受限的四则运算，避免直接执行任意代码
+- 计算前检查输入 band 的 shape、transform 和 CRS 是否一致
+- 基于输入 band 的 nodata 构建 valid mask
+- 公式结果中的 `nan` 和 `inf` 会写成统一 nodata
+
+这一步让流程从“数据准备完成”推进到“可以生成真实指数 GeoTIFF”。
+
+本阶段新增的本地验证脚本：
+
+```text
+scripts/run_index_calculation.py
 ```
 
 下一座关键桥是：
 
 ```text
-指数计算
+渲染与 metadata
 ```
 
-这会把已经裁剪好的 B04/B08 输入转换为真正的 NDVI GeoTIFF。
+这会把已经生成的指数 GeoTIFF 转换为用户更容易查看的 preview PNG，并沉淀 AOI、scene、coverage、公式和输出路径等 metadata。

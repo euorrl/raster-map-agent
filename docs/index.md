@@ -7,6 +7,7 @@ Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。
 ```text
 用户请求
 -> planner
+-> workspace
 -> raster prepare
    -> AOI
    -> scene plan
@@ -22,27 +23,35 @@ Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。
 
 ## 当前状态
 
-当前已经跑通真实数据准备链条：
+当前已经跑通真实数据准备与指数计算链条：
 
 ```text
-Nominatim AOI
+create workspace
+-> Nominatim AOI
 -> Sentinel-2 scene planning
 -> coverage diagnostics
 -> raster download
 -> first mosaic by band
 -> AOI clip
 -> prepared clipped band GeoTIFFs
+-> index GeoTIFF
 ```
 
-`prepare_raster_inputs` 现在是栅格数据准备模块对外的主要入口。它会为每次运行创建独立 UUID workspace，保留 AOI GeoJSON 和裁剪后的 band GeoTIFF，并在成功后清理原始下载 raster 与 mosaic 中间结果。
+`create_workspace` 负责为每次任务创建独立 UUID workspace。`prepare_raster_inputs` 接收已有的 `workspace_dir` 并完成栅格数据准备，保留 AOI GeoJSON 和裁剪后的 band GeoTIFF，并在成功后清理原始下载 raster 与 mosaic 中间结果。
+
+`calculate_raster_index` 负责读取 `clipped_raster/` 中的 band GeoTIFF，根据 registry 传下来的 `band_roles` 和 `index_formula` 计算指数，并输出到：
+
+```text
+data/<uuid>/output/<index>.tif
+```
 
 下一步重点是：
 
 ```text
-clipped B04 + clipped B08
--> NDVI GeoTIFF
+index GeoTIFF
 -> preview PNG
 -> metadata
+-> final answer
 ```
 
 ## 重点文档

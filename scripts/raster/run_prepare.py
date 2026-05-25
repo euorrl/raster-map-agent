@@ -9,19 +9,21 @@ from app.tools.raster_prepare import (  # noqa: E402
     RasterPrepareRequest,
     prepare_raster_inputs,
 )
+from app.tools.workspace import WorkspaceRequest, create_workspace  # noqa: E402
 from app.utils import configure_logging  # noqa: E402
 
 
 def main() -> None:
     configure_logging("INFO")
+    workspace = create_workspace(WorkspaceRequest(root_dir=Path("data")))
 
     result = prepare_raster_inputs(
         RasterPrepareRequest(
-            aoi_query="Chengdu, Sichuan, China",
+            aoi_query="Beijing, China",
+            index_name="NDWI",
             start_date="2023-12-27",
             end_date="2024-01-09",
-            required_bands=["B04", "B08"],
-            root_dir=Path("data"),
+            workspace_dir=Path(workspace.workspace_dir),
         )
     )
 

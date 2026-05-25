@@ -2,8 +2,8 @@
 
 from pathlib import Path
 import shutil
-from uuid import uuid4
 
+from app.registry import resolve_raster_product_config
 from app.tools.raster_prepare.aoi import resolve_administrative_aoi
 from app.tools.raster_prepare.clip import clip_raster_to_aoi
 from app.tools.raster_prepare.download import download_raster_assets
@@ -12,6 +12,7 @@ from app.tools.raster_prepare.scene_plan import build_raster_scene_plan
 from app.tools.raster_prepare.schemas import (
     AOIRequest,
     MOSAIC_RASTER_DIRNAME,
+    OUTPUT_DIRNAME,
     RASTER_DIRNAME,
     RasterClipRequest,
     RasterDownloadRequest,
@@ -28,8 +29,13 @@ logger = get_logger(__name__)
 def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
     """运行 AOI、scene plan、download、mosaic、clip 的完整数据准备流程。"""
 
-    workspace_dir = _create_workspace_dir(request.root_dir)
+    workspace_dir = request.workspace_dir
+    workspace_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Preparing raster inputs workspace_dir=%s", workspace_dir)
+    product_config = resolve_raster_product_config(
+        request.index_name,
+        request.data_source,
+    )
 
     aoi = resolve_administrative_aoi(
         AOIRequest(
@@ -45,7 +51,7 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
             start_date=request.start_date,
             end_date=request.end_date,
             max_cloud_cover=request.max_cloud_cover,
-            required_bands=request.required_bands,
+            required_bands=product_config.required_bands,
             data_source=request.data_source,
             limit=request.scene_limit,
             max_selected_scenes=request.max_selected_scenes,
@@ -71,6 +77,8 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
         boundary_geojson_path=Path(aoi.boundary_geojson_path),
         workspace_dir=workspace_dir,
     )
+    output_dir = workspace_dir / OUTPUT_DIRNAME
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     _remove_intermediate_dirs(
         workspace_dir=workspace_dir,
@@ -79,26 +87,17 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
 
     return RasterPrepareResult(
         workspace_dir=str(workspace_dir),
+        output_dir=str(output_dir),
         boundary_geojson_path=aoi.boundary_geojson_path,
+        index_name=product_config.index_name,
+        data_source=product_config.data_source,
+        required_bands=product_config.required_bands,
+        band_roles=product_config.band_roles,
+        index_formula=product_config.index_formula,
         band_paths=band_paths,
         scene_ids=scene_plan.scene_ids,
         diagnostics=scene_plan.diagnostics,
     )
-
-
-def _create_workspace_dir(root_dir: Path) -> Path:
-    """在 root_dir 下创建一次运行专用的 UUID workspace。"""
-
-    root_dir.mkdir(parents=True, exist_ok=True)
-
-    while True:
-        workspace_dir = root_dir / uuid4().hex
-        try:
-            workspace_dir.mkdir()
-        except FileExistsError:
-            continue
-
-        return workspace_dir
 
 
 def _clip_mosaic_bands(

@@ -56,7 +56,9 @@ V2 目标：
 
 ## V1 数据源固定为 Sentinel-2
 
-当前 `raster_prepare` 保留 `data_source` 参数，但 V1 只接受：
+当前 registry 已经登记 Sentinel-2 和 Landsat 的基础信息，也登记了 NDVI / NDWI 在不同数据源下的波段关系。
+
+但是当前 `raster_prepare` 保留 `data_source` 参数时，V1 只真正执行：
 
 ```text
 data_source="sentinel2"
@@ -71,6 +73,30 @@ data_source="sentinel2"
 
 因此，V1 的 ReAct 优先调整日期、云量和 limit；如果 AOI 过大，则通过
 diagnostics 明确反馈当前 V1 流程不适合，而不是自动切换 provider。
+
+这次边界是：
+
+```text
+registry 可以知道 Landsat
+raster_prepare 暂时不执行 Landsat
+```
+
+这样既保留后续扩展接口，也避免把未验证的数据源提前接入真实下载流程。
+
+## Registry 负责知识，Tools 负责执行
+
+指数、卫星和公式属于稳定知识，不应散落在工具 schema 中。
+
+当前约定：
+
+```text
+planner -> 输出 index_name + data_source
+registry -> 展开 required_bands / band_roles / formula / STAC asset mapping
+raster_prepare -> 对外接收 index_name + data_source，内部用 required_bands 准备裁剪后的 band GeoTIFF
+index_calculation -> 根据 band_roles + formula 计算指数
+```
+
+这样 LLM 不需要直接输出公式或猜波段，后续新增 NDWI、NDBI、Landsat 等能力时，也优先扩展 registry，而不是改动每个工具。
 
 ## AOI 数据源：从 geoBoundaries 切到 Nominatim
 
@@ -284,10 +310,10 @@ download -> first mosaic by band -> clip -> index calculation
 scene_plan 已经按 coverage 和云量筛过 scene，这个策略足以先打通本地完整流程。median、
 cloud mask、quality mask 等更高质量合成策略留到后续版本。
 
-## Prepare 每次运行使用独立 UUID workspace
+## Workspace 独立于 Prepare 创建
 
 数据准备流程会产生较多中间文件：AOI GeoJSON、原始下载 tif、mosaic tif、最终 clipped tif。
-为了避免不同运行互相覆盖，prepare 不复用固定目录，而是在 `data/` 下创建：
+为了避免不同运行互相覆盖，流程开始时先由 `create_workspace` 在 `data/` 下创建：
 
 ```text
 data/<uuid>/

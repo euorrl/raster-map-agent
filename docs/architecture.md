@@ -69,13 +69,15 @@ answer_node
 
 当前：
 
-- NDVI 配置
-- required bands
-- formula
+- `raster_products.py`
+- Sentinel-2 数据源配置
+- Landsat 数据源注册信息
+- NDVI / NDWI 指数配置
+- 指数在不同数据源下的 band roles
+- 解析 `index_name + data_source` 的产品配置
 
 后续扩展：
 
-- NDWI
 - NDBI
 - SAVI
 - 其他专题图产品
@@ -83,6 +85,11 @@ answer_node
 ### `app/tools`
 
 真实工具层。工具应尽量保持输入输出清晰，不依赖 LLM。
+
+当前通用工具：
+
+- `workspace/`：创建一次任务级 workspace，后续数据准备、计算和渲染共享该目录
+- `index_calculation/`：读取裁剪后的 band GeoTIFF，计算 NDVI/NDWI 等指数并输出 GeoTIFF
 
 当前 raster prepare 工具结构：
 
@@ -159,7 +166,7 @@ scripts/raster/run_prepare.py
 
 本地生成数据目录，不进入 git。
 
-当前 `prepare` 每次运行会在 `data/` 下创建一个 UUID workspace：
+当前每次任务会先通过 workspace 工具在 `data/` 下创建一个 UUID workspace：
 
 ```text
 data/<uuid>/
@@ -167,6 +174,7 @@ data/<uuid>/
   raster/
   mosaic_raster/
   clipped_raster/
+  output/
 ```
 
 成功完成裁剪后会保留：
@@ -174,6 +182,7 @@ data/<uuid>/
 ```text
 data/<uuid>/aoi
 data/<uuid>/clipped_raster
+data/<uuid>/output
 ```
 
 并删除中间目录：

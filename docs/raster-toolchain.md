@@ -15,23 +15,24 @@ AOI query
 -> clip per band
 -> prepared band inputs
 -> calculate index
+-> index GeoTIFF
 -> render preview
 -> metadata
 ```
 
-当前已经实现到 `prepared band inputs`，也就是能为 NDVI 计算提供裁剪后的 B04/B08 GeoTIFF。
+当前已经实现到 `index GeoTIFF`：数据准备模块输出裁剪后的 band GeoTIFF，指数计算模块继续生成 NDVI / NDWI 等指数 GeoTIFF。
 
 ## Workspace Directory
 
 低层工具仍然可以单独接收 `workspace_dir`、`input_dir` 或 `output_dir`，方便开发阶段单独调试。
 
-完整数据准备入口 `prepare_raster_inputs` 则只接收一个父目录：
+完整流程开始前先调用 `create_workspace` 创建一次任务级 workspace：
 
 ```python
-root_dir = Path("data")
+workspace = create_workspace(WorkspaceRequest(root_dir=Path("data")))
 ```
 
-每次运行都会自动创建独立 UUID workspace：
+`prepare_raster_inputs` 不再生成 UUID，而是接收已经创建好的 `workspace_dir`。每次任务目录结构为：
 
 ```text
 data/<uuid>/
@@ -39,6 +40,7 @@ data/<uuid>/
   raster/
   mosaic_raster/
   clipped_raster/
+  output/
 ```
 
 成功完成 clip 后，prepare 会删除中间目录：
@@ -53,6 +55,7 @@ data/<uuid>/mosaic_raster
 ```text
 data/<uuid>/aoi
 data/<uuid>/clipped_raster
+data/<uuid>/output
 ```
 
 这样后续指数计算只需要读取裁剪后的 band，不需要关心原始下载文件和 mosaic 中间文件。
@@ -111,7 +114,23 @@ provider="earth_search"
 collection="sentinel-2-l2a"
 ```
 
-`data_source` 是给上游 planner/ReAct 使用的稳定协议字段。当前只支持 `sentinel2`，不自动切换 Landsat、MODIS 或其他 provider。
+`data_source` 是给上游 planner/ReAct 使用的稳定协议字段。registry 中已经保留 Landsat 的指数波段映射，但当前 `raster_prepare` 只执行 `sentinel2`，不自动切换 Landsat、MODIS 或其他 provider。
+
+指数和数据源知识位于：
+
+```text
+app/registry/raster_products.py
+```
+
+其中 registry 负责解析：
+
+```text
+index_name + data_source
+-> required_bands
+-> band_roles
+-> index_formula
+-> provider / collection / band asset mapping
+```
 
 输入：
 
@@ -323,11 +342,11 @@ resolve AOI
 ```python
 RasterPrepareRequest(
     aoi_query="Chengdu, Sichuan, China",
+    index_name="NDVI",
     start_date="2023-12-01",
     end_date="2024-01-31",
     max_cloud_cover=30,
-    required_bands=["B04", "B08"],
-    root_dir=Path("data"),
+    workspace_dir=Path(workspace.workspace_dir),
 )
 ```
 
@@ -336,7 +355,13 @@ RasterPrepareRequest(
 ```python
 RasterPrepareResult(
     workspace_dir="data/<uuid>",
+    output_dir="data/<uuid>/output",
     boundary_geojson_path="data/<uuid>/aoi/Chengdu_Sichuan_China.geojson",
+    index_name="NDVI",
+    data_source="sentinel2",
+    required_bands=["B04", "B08"],
+    band_roles={"red": "B04", "nir": "B08"},
+    index_formula="(nir - red) / (nir + red)",
     band_paths={
         "B04": "data/<uuid>/clipped_raster/B04_clipped.tif",
         "B08": "data/<uuid>/clipped_raster/B08_clipped.tif",
@@ -350,9 +375,38 @@ prepare pipeline 是工具链和 Agent workflow 之间的桥。它对外隐藏 A
 
 ## Index Calculation
 
-尚未实现。
+当前实现：`calculate_raster_index`。
 
-NDVI 计划：
+职责：
+
+```text
+读取 workspace/clipped_raster 中的 band GeoTIFF
+-> 根据 band_roles 把公式变量映射到真实 band
+-> 用受限公式解析执行四则运算
+-> 写出 workspace/output/<index>.tif
+-> 返回 index_tif_path
+```
+
+输入示例：
+
+```python
+IndexCalculationRequest(
+    workspace_dir=Path("data/<uuid>"),
+    index_name="NDVI",
+    band_roles={"red": "B04", "nir": "B08"},
+    index_formula="(nir - red) / (nir + red)",
+)
+```
+
+输出示例：
+
+```python
+IndexCalculationResult(
+    index_tif_path="data/<uuid>/output/ndvi.tif",
+)
+```
+
+NDVI：
 
 ```text
 NDVI = (B08 - B04) / (B08 + B04)
@@ -362,13 +416,14 @@ NDVI = (B08 - B04) / (B08 + B04)
 
 - 输入 clipped bands 是 `float32`
 - nodata 是 `-9999.0`
-- 计算前必须构建 valid mask
-- 避免 `(nir + red) == 0`
+- 计算前会基于每个输入 band 构建 valid mask
+- 公式结果中的 `inf` 和 `nan` 会写成 nodata
+- 输入 bands 必须已经对齐到同一 shape、transform 和 CRS
 
-建议输出：
+默认输出：
 
 ```text
-outputs/ndvi.tif
+data/<uuid>/output/ndvi.tif
 ```
 
 ## Render
