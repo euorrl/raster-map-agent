@@ -109,6 +109,7 @@ def test_prepare_raster_inputs_runs_pipeline_and_cleans_intermediates(
         fake_clip,
     )
 
+    workspace_dir = tmp_path / "run_1"
     result = prepare_raster_inputs(
         RasterPrepareRequest(
             aoi_query="Test City, Test Country",
@@ -116,13 +117,14 @@ def test_prepare_raster_inputs_runs_pipeline_and_cleans_intermediates(
             end_date="2024-01-31",
             max_cloud_cover=20,
             index_name="NDVI",
-            root_dir=tmp_path,
+            workspace_dir=workspace_dir,
         )
     )
 
     workspace_dir = Path(result.workspace_dir)
-    assert workspace_dir.parent == tmp_path
-    assert len(workspace_dir.name) == 32
+    assert workspace_dir == tmp_path / "run_1"
+    assert result.output_dir == str(workspace_dir / "output")
+    assert (workspace_dir / "output").exists()
     assert result.band_paths == {
         "B04": str(workspace_dir / "clipped_raster" / "B04_clipped.tif")
     }
@@ -155,7 +157,7 @@ def test_raster_prepare_request_rejects_registry_only_landsat_source(tmp_path):
             data_source="landsat",
             start_date="2024-01-01",
             end_date="2024-01-31",
-            root_dir=tmp_path,
+            workspace_dir=tmp_path / "run_1",
         )
 
 
@@ -166,7 +168,7 @@ def test_raster_prepare_request_accepts_ndwi_sentinel2(tmp_path):
         data_source="Sentinel2",
         start_date="2024-01-01",
         end_date="2024-01-31",
-        root_dir=tmp_path,
+        workspace_dir=tmp_path / "run_1",
     )
 
     assert request.index_name == "NDWI"
@@ -260,7 +262,7 @@ def test_prepare_raster_inputs_uses_index_required_bands(monkeypatch, tmp_path):
             index_name="NDWI",
             start_date="2024-01-01",
             end_date="2024-01-31",
-            root_dir=tmp_path,
+            workspace_dir=tmp_path / "run_1",
         )
     )
 

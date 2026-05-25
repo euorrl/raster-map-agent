@@ -34,7 +34,7 @@ Nominatim AOI
 -> prepared clipped band GeoTIFFs
 ```
 
-`prepare_raster_inputs` 现在是栅格数据准备模块对外的主要入口。它会为每次运行创建独立 UUID workspace，保留 AOI GeoJSON 和裁剪后的 band GeoTIFF，并在成功后清理原始下载 raster 与 mosaic 中间结果。
+`create_workspace` 现在负责为每次任务创建独立 UUID workspace，`prepare_raster_inputs` 只接收已有的 `workspace_dir` 并完成栅格数据准备。流程会保留 AOI GeoJSON 和裁剪后的 band GeoTIFF，并在成功后清理原始下载 raster 与 mosaic 中间结果。
 
 下一步重点是：
 

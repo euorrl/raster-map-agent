@@ -161,7 +161,7 @@ scripts/raster/run_prepare.py
 
 本地生成数据目录，不进入 git。
 
-当前 `prepare` 每次运行会在 `data/` 下创建一个 UUID workspace：
+当前每次任务会先通过 workspace 工具在 `data/` 下创建一个 UUID workspace：
 
 ```text
 data/<uuid>/
@@ -169,6 +169,7 @@ data/<uuid>/
   raster/
   mosaic_raster/
   clipped_raster/
+  output/
 ```
 
 成功完成裁剪后会保留：
@@ -176,6 +177,7 @@ data/<uuid>/
 ```text
 data/<uuid>/aoi
 data/<uuid>/clipped_raster
+data/<uuid>/output
 ```
 
 并删除中间目录：

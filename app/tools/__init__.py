@@ -1,3 +1,8 @@
+from app.tools.index_calculation import (
+    IndexCalculationError,
+    IndexCalculationRequest,
+    IndexCalculationResult,
+)
 from app.tools.raster_prepare import (
     AOIRequest,
     AOIResult,
@@ -27,10 +32,14 @@ from app.tools.raster_prepare import (
     resolve_administrative_aoi,
     update_raster_scene_candidates,
 )
+from app.tools.workspace import WorkspaceRequest, WorkspaceResult, create_workspace
 
 __all__ = [
     "AOIRequest",
     "AOIResult",
+    "IndexCalculationError",
+    "IndexCalculationRequest",
+    "IndexCalculationResult",
     "RasterClipError",
     "RasterClipRequest",
     "RasterClipResult",
@@ -48,9 +57,12 @@ __all__ = [
     "RasterScenePlanDiagnostics",
     "RasterScenePlanResult",
     "RasterScenePlanRequest",
+    "WorkspaceRequest",
+    "WorkspaceResult",
     "build_raster_scene_plan",
     "build_raster_scene_plan_from_candidates",
     "clip_raster_to_aoi",
+    "create_workspace",
     "download_raster_assets",
     "mosaic_rasters_by_band",
     "prepare_raster_inputs",

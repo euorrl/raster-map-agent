@@ -25,13 +25,13 @@ AOI query
 
 低层工具仍然可以单独接收 `workspace_dir`、`input_dir` 或 `output_dir`，方便开发阶段单独调试。
 
-完整数据准备入口 `prepare_raster_inputs` 则只接收一个父目录：
+完整流程开始前先调用 `create_workspace` 创建一次任务级 workspace：
 
 ```python
-root_dir = Path("data")
+workspace = create_workspace(WorkspaceRequest(root_dir=Path("data")))
 ```
 
-每次运行都会自动创建独立 UUID workspace：
+`prepare_raster_inputs` 不再生成 UUID，而是接收已经创建好的 `workspace_dir`。每次任务目录结构为：
 
 ```text
 data/<uuid>/
@@ -39,6 +39,7 @@ data/<uuid>/
   raster/
   mosaic_raster/
   clipped_raster/
+  output/
 ```
 
 成功完成 clip 后，prepare 会删除中间目录：
@@ -53,6 +54,7 @@ data/<uuid>/mosaic_raster
 ```text
 data/<uuid>/aoi
 data/<uuid>/clipped_raster
+data/<uuid>/output
 ```
 
 这样后续指数计算只需要读取裁剪后的 band，不需要关心原始下载文件和 mosaic 中间文件。
@@ -343,7 +345,7 @@ RasterPrepareRequest(
     start_date="2023-12-01",
     end_date="2024-01-31",
     max_cloud_cover=30,
-    root_dir=Path("data"),
+    workspace_dir=Path(workspace.workspace_dir),
 )
 ```
 
@@ -352,6 +354,7 @@ RasterPrepareRequest(
 ```python
 RasterPrepareResult(
     workspace_dir="data/<uuid>",
+    output_dir="data/<uuid>/output",
     boundary_geojson_path="data/<uuid>/aoi/Chengdu_Sichuan_China.geojson",
     index_name="NDVI",
     data_source="sentinel2",

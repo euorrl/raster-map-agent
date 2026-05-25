@@ -247,11 +247,11 @@ source
 
 关键设计：
 
-- 每次运行在 `data/` 下创建独立 UUID workspace
+- workspace 由 `create_workspace` 在流程开始前创建，prepare 只接收 `workspace_dir`
 - 对外接收 `index_name + data_source`，并通过 registry 展开 required bands
-- 中间目录包括 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/`
+- 任务目录包括 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/`、`output/`
 - 成功完成 clip 后删除 `raster/` 和 `mosaic_raster/`
-- 保留 `aoi/` 和 `clipped_raster/`
+- 保留 `aoi/`、`clipped_raster/` 和 `output/`
 - 返回后续指数计算需要的 band paths、scene ids 和 diagnostics
 
 这个阶段证明：数据准备模块已经能为 NDVI 计算提供真实裁剪后的 B04/B08 输入。
@@ -269,7 +269,7 @@ scene plan 可返回 coverage diagnostics
 coverage 默认使用最低可接受阈值而不是 100% 硬门槛
 同一 band 的多张 tif 可先用 first 策略合并成 mosaic GeoTIFF
 prepare pipeline 可串联 AOI、scene plan、download、mosaic、clip
-每次 prepare 运行会创建独立 UUID workspace，并在成功后清理中间 raster
+每次任务先创建独立 UUID workspace，prepare 在该 workspace 内运行并在成功后清理中间 raster
 ```
 
 下一座关键桥是：

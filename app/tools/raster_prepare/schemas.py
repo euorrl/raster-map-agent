@@ -12,6 +12,7 @@ AOI_DIRNAME = "aoi"
 RASTER_DIRNAME = "raster"
 CLIPPED_RASTER_DIRNAME = "clipped_raster"
 MOSAIC_RASTER_DIRNAME = "mosaic_raster"
+OUTPUT_DIRNAME = "output"
 
 
 class RasterDownloadError(RuntimeError):
@@ -226,7 +227,7 @@ class RasterPrepareRequest(BaseModel):
         start_date: 查询开始日期，格式为 ``YYYY-MM-DD``。
         end_date: 查询结束日期，格式为 ``YYYY-MM-DD``。
         max_cloud_cover: 允许的最大云量百分比。
-        root_dir: 每次运行 UUID workspace 的父目录，默认是 ``data``。
+        workspace_dir: 当前任务的工作目录。
     """
 
     aoi_query: str = Field(min_length=1)
@@ -234,7 +235,7 @@ class RasterPrepareRequest(BaseModel):
     start_date: str
     end_date: str
     max_cloud_cover: float = Field(default=30, ge=0, le=100)
-    root_dir: Path = Path("data")
+    workspace_dir: Path
     data_source: str = DEFAULT_RASTER_DATA_SOURCE
     aoi_limit: int = Field(default=5, ge=1, le=10)
     scene_limit: int = Field(default=100, ge=1, le=100)
@@ -273,6 +274,7 @@ class RasterPrepareResult(BaseModel):
     """栅格数据准备 pipeline 结果。"""
 
     workspace_dir: str
+    output_dir: str
     boundary_geojson_path: str
     index_name: str
     data_source: str

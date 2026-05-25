@@ -310,10 +310,10 @@ download -> first mosaic by band -> clip -> index calculation
 scene_plan 已经按 coverage 和云量筛过 scene，这个策略足以先打通本地完整流程。median、
 cloud mask、quality mask 等更高质量合成策略留到后续版本。
 
-## Prepare 每次运行使用独立 UUID workspace
+## Workspace 独立于 Prepare 创建
 
 数据准备流程会产生较多中间文件：AOI GeoJSON、原始下载 tif、mosaic tif、最终 clipped tif。
-为了避免不同运行互相覆盖，prepare 不复用固定目录，而是在 `data/` 下创建：
+为了避免不同运行互相覆盖，流程开始时先由 `create_workspace` 在 `data/` 下创建：
 
 ```text
 data/<uuid>/
