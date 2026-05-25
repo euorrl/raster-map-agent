@@ -16,7 +16,6 @@ tests/
 scripts/
 docs/
 data/
-outputs/
 ```
 
 ## app
@@ -165,9 +164,9 @@ scripts/raster/run_prepare.py
 - 快速检查产物
 - 开发阶段辅助调试
 
-## data / outputs
+## data
 
-本地生成数据目录，不进入 git。
+本地任务 workspace 目录，不进入 git。
 
 当前每次任务会先通过 workspace 工具在 `data/` 下创建一个 UUID workspace：
 
@@ -188,11 +187,17 @@ data/<uuid>/clipped_raster
 data/<uuid>/output
 ```
 
+其中 `output/` 是该任务的最终结果目录，用于保存：
+
+```text
+data/<uuid>/output/<index>.tif
+data/<uuid>/output/<index>_preview.png
+data/<uuid>/output/metadata.json
+```
+
 并删除中间目录：
 
 ```text
 data/<uuid>/raster
 data/<uuid>/mosaic_raster
 ```
-
-后续 `outputs/` 更适合存放最终用户可见结果，例如 NDVI GeoTIFF、preview PNG、metadata JSON。
