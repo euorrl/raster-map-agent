@@ -155,6 +155,144 @@ STAC 搜索候选 scenes
 -> 生成 RasterScenePlanResult
 ```
 
+### 输入对象
+
+算法真正关心的是三个对象：
+
+```text
+AOI geometry
+candidate scenes
+selection state
+```
+
+其中：
+
+- `AOI geometry` 来自 `boundary_geojson_path`，是用户真正关心的行政区或区域边界
+- `candidate scenes` 来自 STAC 搜索结果，每个 scene 至少需要有 `scene_id`、`cloud_cover`、`geometry` 和 band asset URL
+- `selection state` 是算法运行时维护的已选 scene、已覆盖区域和未覆盖区域
+
+这也是为什么 coverage 不能继续用 bbox。bbox 只是搜索参数，AOI geometry 才是选择 scene 时的真实目标。
+
+### 候选池构建
+
+候选池不是直接等于 STAC 返回结果，而是经过几层处理：
+
+```text
+STAC features
+-> 提取 RasterScene
+-> 按 scene_id 写入 RasterSceneCandidateStore
+-> 自动去重
+-> 过滤没有 required band asset 的 scene
+-> 过滤 cloud_cover > max_cloud_cover 的 scene
+-> 过滤没有 geometry 的 scene
+```
+
+`RasterSceneCandidateStore` 的作用是让多次查询可以累积候选 scene。后续局部 ReAct 扩大日期、放宽云量或增加 limit 时，可以继续把新查询结果合并到同一个 store，再重新生成 plan。
+
+### 已覆盖区域与未覆盖区域
+
+算法开始时：
+
+```text
+covered_geometry = empty
+uncovered_geometry = AOI geometry
+selected_scenes = []
+```
+
+每选中一张 scene，就会更新：
+
+```text
+covered_geometry = covered_geometry union scene.geometry
+uncovered_geometry = AOI geometry difference covered_geometry
+```
+
+直观理解是：
+
+```text
+已经被影像覆盖的 AOI 区域从“待补洞区域”里扣掉。
+```
+
+所以同一个 footprint 的其它 scene 通常不会再次被选中，因为它们对 `uncovered_geometry` 的新增贡献会变成 0 或非常小。
+
+### 单轮选择逻辑
+
+每一轮会遍历所有还没有被选中的候选 scene，计算它对当前 AOI 缺口的贡献：
+
+```text
+contribution_area = area(scene.geometry ∩ uncovered_geometry)
+```
+
+如果这张 scene 和 AOI 没有交集，或者新增贡献低于 `min_scene_overlap_ratio`，它不会进入本轮竞争。
+
+接着找到本轮最大贡献：
+
+```text
+best_contribution = max(contribution_area)
+```
+
+只要贡献接近最大值的 scene 才有资格用云量比较：
+
+```text
+contribution_area >= best_contribution * contribution_tolerance
+```
+
+例如 `contribution_tolerance=0.95` 时，贡献达到最佳 scene 95% 以上的 scene 都算“空间贡献接近”。在这些竞争者中，选择云量最低的一张。
+
+这条规则的含义是：
+
+```text
+先保证空间覆盖，不为了极低云量牺牲太多 AOI 覆盖；
+当空间贡献差不多时，再选云量更低的 scene。
+```
+
+### 伪代码
+
+```text
+selected = []
+covered = empty geometry
+uncovered = AOI geometry
+
+while len(selected) < max_selected_scenes:
+    candidates = []
+
+    for scene in remaining_scenes:
+        contribution = area(scene.geometry ∩ uncovered)
+        if contribution <= minimum_required_contribution:
+            continue
+        candidates.append((scene, contribution, cloud_cover))
+
+    if candidates is empty:
+        break
+
+    best_contribution = max(contribution for each candidate)
+    competitive = [
+        candidate
+        for candidate in candidates
+        if candidate.contribution >= best_contribution * contribution_tolerance
+    ]
+
+    chosen = scene with lowest cloud_cover in competitive
+    selected.append(chosen)
+    covered = union(covered, chosen.geometry)
+    uncovered = difference(AOI geometry, covered)
+
+    if uncovered is almost empty:
+        break
+```
+
+这个算法是贪心算法，不保证全局最优。但它的工程优势是清楚、可解释、容易调试，并且比单纯按云量排序更贴近当前 V1 的目标。
+
+### 停止条件
+
+算法会在以下情况停止：
+
+- 已选 scene 数量达到 `max_selected_scenes`
+- AOI 已经接近完整覆盖
+- 剩余候选 scene 都无法给未覆盖区域带来新增贡献
+- 候选 scene 为空
+
+停止后会统一计算最终 coverage ratio，并写入 diagnostics。
+
 当前关键参数：
 
 ```python

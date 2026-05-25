@@ -20,7 +20,6 @@
 
 - `pyproject.toml` 适合承载 black、pytest 等工具配置
 - `pre-commit` 是检查流程配置，不适合迁移到 `pyproject.toml`
-- 功能分支完成后可以合并并删除，后续修改用新分支继续推进
 
 ## 阶段 2：Mock LangGraph Workflow
 
@@ -51,7 +50,7 @@ workflow 顺序是否清楚
 
 ## 阶段 3：日志与基础模块整理
 
-为了让项目更像真实工程，引入了统一日志工具。
+引入统一日志工具。
 
 完成内容：
 
@@ -83,8 +82,6 @@ workflow 顺序是否清楚
 - Earth Search STAC 搜索
 - scene plan 与下载执行解耦
 - 多次查询结果可累积到候选 store
-- 候选 scene 改为全局累积，并用 coverage-aware greedy 选择 scene
-- 使用 Shapely 生成 scene plan coverage diagnostics
 - Sentinel-2 L2A `B04` / `B08` 下载
 - RFC3339 datetime 修正
 - Earth Search 400 错误信息增强
@@ -94,7 +91,7 @@ workflow 顺序是否清楚
 
 - bbox 当前只用于搜索，不代表只下载 bbox 内数据
 - STAC 搜索返回的是与 bbox 相交的 scene，不保证完整覆盖 bbox
-- 多 scene 下载和 coverage diagnostics 已经具备雏形，当时下一步需要 mosaic；该部分后来在阶段 7 已完成
+- 下载层应该只执行 scene plan，不应该继续承担 scene 选择逻辑
 
 ## 阶段 5：AOI 边界解析探索
 
@@ -172,7 +169,44 @@ source
 
 这解决了细长 AOI 或不规则 AOI 在规则 raster 外接矩形中产生冗余像素的问题。
 
-## 阶段 7：first mosaic 工具
+## 阶段 7：Scene Plan 算法与 Coverage 设计
+
+在真实下载跑通后，发现“能下载”并不等于“下载到适合 AOI 的数据”。
+
+这个阶段专门解决：
+
+```text
+从 STAC 返回的候选 scene 中，如何选择一个尽量少、尽量低云、尽量覆盖 AOI 的组合
+```
+
+完成内容：
+
+- `RasterScene`
+- `RasterSceneCandidateStore`
+- `RasterScenePlanDiagnostics`
+- `RasterScenePlanResult`
+- `build_raster_scene_plan`
+- 候选 scene 按 `scene_id` 去重
+- 多次查询可以累积到同一个 candidate store
+- 按 `max_cloud_cover` 做硬过滤
+- 使用真实 AOI GeoJSON，而不是 bbox，进行 coverage diagnostics
+- 使用 Shapely 计算 scene footprint union 与 AOI geometry 的覆盖率
+- scene 选择从按 tile 分组，演进为全局 coverage-aware greedy selection
+- coverage 从 100% 硬门槛改为 `min_coverage_ratio=0.7` 的最低可接受阈值
+
+关键推理：
+
+- STAC 搜索用 bbox 只是粗筛，不代表 scene 完整覆盖 AOI
+- Sentinel-2 tile 是规则栅格，但真实 footprint 可能是斜切多边形
+- 同一个 tile 内不同日期或轨道的 footprint 可能覆盖不同部分
+- 如果只按云量排序，可能连续选到空间上重复的低云 scene
+- 更合理的做法是每轮优先补 AOI 当前未覆盖区域，贡献接近时再比较云量
+
+当前算法细节见：
+
+- [Scene 选择算法迭代](scene-selection-evolution.md)
+
+## 阶段 8：first mosaic 工具
 
 实现同一 band 的多 scene / 多 tile 合并。
 
@@ -199,7 +233,7 @@ source
 - scene plan 已经尽量选低云且补覆盖的 scene，first mosaic 足够先打通完整本地流程
 - median、cloud mask、quality mask 留到后续版本
 
-## 阶段 8：prepare pipeline
+## 阶段 9：prepare pipeline
 
 把 AOI、scene plan、download、mosaic、clip 串成一个对外入口。
 
