@@ -15,11 +15,12 @@ AOI query
 -> clip per band
 -> prepared band inputs
 -> calculate index
+-> index GeoTIFF
 -> render preview
 -> metadata
 ```
 
-当前已经实现到 `prepared band inputs`，也就是能为 NDVI 计算提供裁剪后的 B04/B08 GeoTIFF。
+当前已经实现到 `index GeoTIFF`：数据准备模块输出裁剪后的 band GeoTIFF，指数计算模块继续生成 NDVI / NDWI 等指数 GeoTIFF。
 
 ## Workspace Directory
 
