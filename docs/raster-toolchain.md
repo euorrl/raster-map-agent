@@ -129,6 +129,7 @@ index_name + data_source
 -> required_bands
 -> band_roles
 -> index_formula
+-> render_config
 -> provider / collection / band asset mapping
 ```
 
@@ -428,7 +429,7 @@ data/<uuid>/output/ndvi.tif
 
 ## Render
 
-尚未实现。
+当前已定义接口，真实 PNG 渲染逻辑尚未实现。
 
 目标：
 
@@ -439,6 +440,23 @@ index GeoTIFF -> preview PNG
 需要处理：
 
 - nodata mask
-- min/max 或 percentile stretch
-- colormap
+- registry 中的 `vmin` / `vmax`
+- registry 中的 `colormap`
 - 输出 PNG
+
+接口计划：
+
+```python
+RenderPreviewRequest(
+    index_name="NDVI",
+    index_tif_path=Path("data/<uuid>/output/ndvi.tif"),
+)
+```
+
+输出：
+
+```python
+RenderPreviewResult(
+    preview_path="data/<uuid>/output/ndvi_preview.png",
+)
+```

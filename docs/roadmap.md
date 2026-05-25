@@ -25,6 +25,7 @@ Agent 基础：
 - logging
 - workspace 创建工具
 - raster product registry 雏形
+- 指数默认渲染配置
 - AOI 解析
 - Sentinel-2 scene plan
 - 多 scene band asset 下载
@@ -33,6 +34,7 @@ Agent 基础：
 - GeoTIFF clip
 - `prepare_raster_inputs` 数据准备 pipeline
 - `calculate_raster_index` 指数计算工具
+- `render_preview` 渲染接口
 
 当前工具链已经可以输出真实指数 GeoTIFF：
 
@@ -61,8 +63,8 @@ index GeoTIFF
 渲染需要处理：
 
 - nodata mask
-- colormap
-- percentile stretch
+- registry 中的 colormap
+- registry 中的 vmin / vmax
 - PNG 输出
 
 metadata 需要记录：

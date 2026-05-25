@@ -35,11 +35,20 @@ class IndexDataSourceConfig(BaseModel):
         return list(self.band_roles.values())
 
 
+class RasterRenderConfig(BaseModel):
+    """某个指数产品的默认渲染配置。"""
+
+    vmin: float
+    vmax: float
+    colormap: str
+
+
 class IndexConfig(BaseModel):
     """栅格指数配置。"""
 
     name: str
     index_formula: str
+    render_config: RasterRenderConfig
     data_sources: dict[str, IndexDataSourceConfig]
 
     @property
@@ -57,6 +66,7 @@ class RasterProductConfig(BaseModel):
     required_bands: list[str]
     band_roles: dict[str, str]
     index_formula: str
+    render_config: RasterRenderConfig
     provider: str
     collection: str
     band_assets: dict[str, str]
@@ -92,6 +102,11 @@ INDEX_REGISTRY: dict[str, IndexConfig] = {
     "NDVI": IndexConfig(
         name="NDVI",
         index_formula="(nir - red) / (nir + red)",
+        render_config=RasterRenderConfig(
+            vmin=-0.2,
+            vmax=0.8,
+            colormap="greens",
+        ),
         data_sources={
             "sentinel2": IndexDataSourceConfig(
                 data_source="sentinel2",
@@ -106,6 +121,11 @@ INDEX_REGISTRY: dict[str, IndexConfig] = {
     "NDWI": IndexConfig(
         name="NDWI",
         index_formula="(green - nir) / (green + nir)",
+        render_config=RasterRenderConfig(
+            vmin=-0.5,
+            vmax=0.5,
+            colormap="blues",
+        ),
         data_sources={
             "sentinel2": IndexDataSourceConfig(
                 data_source="sentinel2",
@@ -183,6 +203,7 @@ def resolve_raster_product_config(
         required_bands=index_source_config.required_bands,
         band_roles=index_source_config.band_roles,
         index_formula=index_config.index_formula,
+        render_config=index_config.render_config,
         provider=source_config.provider,
         collection=source_config.collection,
         band_assets=source_config.band_assets,

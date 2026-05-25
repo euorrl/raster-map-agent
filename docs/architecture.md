@@ -74,6 +74,7 @@ answer_node
 - Landsat 数据源注册信息
 - NDVI / NDWI 指数配置
 - 指数在不同数据源下的 band roles
+- 指数默认渲染配置
 - 解析 `index_name + data_source` 的产品配置
 
 后续扩展：
@@ -89,7 +90,9 @@ answer_node
 当前通用工具：
 
 - `workspace/`：创建一次任务级 workspace，后续数据准备、计算和渲染共享该目录
+- `raster_prepare/`：根据aoi区域和日期输出剪切好的GeoTIFF
 - `index_calculation/`：读取裁剪后的 band GeoTIFF，计算 NDVI/NDWI 等指数并输出 GeoTIFF
+- `render_preview/`：定义指数 GeoTIFF 到预览 PNG 的渲染接口
 
 当前 raster prepare 工具结构：
 

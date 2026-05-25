@@ -91,9 +91,10 @@ raster_prepare 暂时不执行 Landsat
 
 ```text
 planner -> 输出 index_name + data_source
-registry -> 展开 required_bands / band_roles / formula / STAC asset mapping
+registry -> 展开 required_bands / band_roles / formula / render_config / STAC asset mapping
 raster_prepare -> 对外接收 index_name + data_source，内部用 required_bands 准备裁剪后的 band GeoTIFF
 index_calculation -> 根据 band_roles + formula 计算指数
+render_preview -> 根据 index_name 和 render_config 渲染预览 PNG
 ```
 
 这样 LLM 不需要直接输出公式或猜波段，后续新增 NDWI、NDBI、Landsat 等能力时，也优先扩展 registry，而不是改动每个工具。

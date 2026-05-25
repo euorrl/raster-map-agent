@@ -302,3 +302,12 @@ scripts/run_index_calculation.py
 ```
 
 这会把已经生成的指数 GeoTIFF 转换为用户更容易查看的 preview PNG，并沉淀 AOI、scene、coverage、公式和输出路径等 metadata。
+
+在进入真实渲染实现前，先把指数的默认渲染配置放入 `raster_products.py`：
+
+```text
+NDVI -> vmin=-0.2, vmax=0.8, colormap=greens
+NDWI -> vmin=-0.5, vmax=0.5, colormap=blues
+```
+
+同时新增 `render_preview` 接口骨架，让渲染模块后续只需要接收 `index_name + index_tif_path`，并返回一个 `preview_path`。
