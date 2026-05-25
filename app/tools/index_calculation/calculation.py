@@ -94,9 +94,7 @@ def _load_role_arrays(
 
         role_arrays[role] = data
         valid_mask = (
-            band_valid_mask
-            if valid_mask is None
-            else valid_mask & band_valid_mask
+            band_valid_mask if valid_mask is None else valid_mask & band_valid_mask
         )
 
     if not role_arrays or valid_mask is None or reference_profile is None:
