@@ -94,7 +94,7 @@ workflow 顺序是否清楚
 
 - bbox 当前只用于搜索，不代表只下载 bbox 内数据
 - STAC 搜索返回的是与 bbox 相交的 scene，不保证完整覆盖 bbox
-- 多 scene 下载和 coverage diagnostics 已经具备雏形，下一步需要 mosaic
+- 多 scene 下载和 coverage diagnostics 已经具备雏形，当时下一步需要 mosaic；该部分后来在阶段 7 已完成
 
 ## 阶段 5：AOI 边界解析探索
 
@@ -171,6 +171,55 @@ source
 - metadata 写入 `nodata=-9999.0`
 
 这解决了细长 AOI 或不规则 AOI 在规则 raster 外接矩形中产生冗余像素的问题。
+
+## 阶段 7：first mosaic 工具
+
+实现同一 band 的多 scene / 多 tile 合并。
+
+完成内容：
+
+- `RasterMosaicRequest`
+- `RasterMosaicResult`
+- `RasterMosaicError`
+- `mosaic_rasters_by_band`
+- `scripts/raster/run_mosaic.py`
+- `tests/tools/raster_prepare/test_mosaic.py`
+
+关键设计：
+
+- 输入：一个包含多张 GeoTIFF 的目录
+- 输出：每个 band 一张 mosaic GeoTIFF
+- 自动从文件名末尾解析 `B04`、`B08` 等 band 名称
+- 使用 `rasterio.merge.merge(..., method="first")`
+- 如果输入 tif CRS 不一致，使用 `WarpedVRT` 做临时重投影
+
+关键判断：
+
+- V1 先不做 median mosaic，避免一次性进入像素级合成复杂度和内存压力
+- scene plan 已经尽量选低云且补覆盖的 scene，first mosaic 足够先打通完整本地流程
+- median、cloud mask、quality mask 留到后续版本
+
+## 阶段 8：prepare pipeline
+
+把 AOI、scene plan、download、mosaic、clip 串成一个对外入口。
+
+完成内容：
+
+- `RasterPrepareRequest`
+- `RasterPrepareResult`
+- `prepare_raster_inputs`
+- `scripts/raster/run_prepare.py`
+- `tests/tools/raster_prepare/test_prepare.py`
+
+关键设计：
+
+- 每次运行在 `data/` 下创建独立 UUID workspace
+- 中间目录包括 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/`
+- 成功完成 clip 后删除 `raster/` 和 `mosaic_raster/`
+- 保留 `aoi/` 和 `clipped_raster/`
+- 返回后续指数计算需要的 band paths、scene ids 和 diagnostics
+
+这个阶段证明：数据准备模块已经能为 NDVI 计算提供真实裁剪后的 B04/B08 输入。
 
 ## 当前阶段性结论
 

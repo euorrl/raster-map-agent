@@ -158,6 +158,7 @@ STAC 搜索候选 scenes
 当前关键参数：
 
 ```python
+max_cloud_cover = 30
 limit = 100
 max_selected_scenes = 20
 contribution_tolerance = 0.95
@@ -167,6 +168,7 @@ min_coverage_ratio = 0.7
 
 含义：
 
+- `max_cloud_cover`: 候选 scene 允许的最大云量百分比
 - `limit`: 单次 STAC 请求最多返回多少候选 scene
 - `max_selected_scenes`: 最终 plan 最多下载多少 scene
 - `contribution_tolerance`: 当新增贡献达到最佳贡献的 95% 时，认为贡献接近，可以用云量决定优先级
