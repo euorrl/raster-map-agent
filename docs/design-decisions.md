@@ -284,6 +284,36 @@ download -> first mosaic by band -> clip -> index calculation
 scene_plan 已经按 coverage 和云量筛过 scene，这个策略足以先打通本地完整流程。median、
 cloud mask、quality mask 等更高质量合成策略留到后续版本。
 
+## Prepare 每次运行使用独立 UUID workspace
+
+数据准备流程会产生较多中间文件：AOI GeoJSON、原始下载 tif、mosaic tif、最终 clipped tif。
+为了避免不同运行互相覆盖，prepare 不复用固定目录，而是在 `data/` 下创建：
+
+```text
+data/<uuid>/
+```
+
+成功完成 clip 后，只保留后续计算真正需要的文件：
+
+```text
+aoi/
+clipped_raster/
+```
+
+并删除：
+
+```text
+raster/
+mosaic_raster/
+```
+
+这样做的取舍是：
+
+- 保留 AOI，便于复查边界和后续渲染 metadata
+- 保留 clipped band，作为指数计算的直接输入
+- 删除原始下载 tif 和 mosaic tif，降低磁盘占用
+- 如果流程中途失败，则不主动清理中间文件，方便调试
+
 ## Coverage 使用真实 AOI GeoJSON
 
 STAC 搜索阶段继续使用 AOI bbox。bbox 的职责只是粗筛候选 scene：

@@ -12,6 +12,8 @@ from app.tools.raster_prepare import (
     RasterMosaicError,
     RasterMosaicRequest,
     RasterMosaicResult,
+    RasterPrepareRequest,
+    RasterPrepareResult,
     RasterScene,
     RasterSceneCandidateStore,
     RasterScenePlanDiagnostics,
@@ -23,6 +25,7 @@ from app.tools.raster_prepare import (
     download_raster_assets,
     get_raster_data_source_config,
     mosaic_rasters_by_band,
+    prepare_raster_inputs,
     resolve_administrative_aoi,
     update_raster_scene_candidates,
 )
@@ -41,6 +44,8 @@ __all__ = [
     "RasterMosaicError",
     "RasterMosaicRequest",
     "RasterMosaicResult",
+    "RasterPrepareRequest",
+    "RasterPrepareResult",
     "RasterScene",
     "RasterSceneCandidateStore",
     "RasterScenePlanDiagnostics",
@@ -52,6 +57,7 @@ __all__ = [
     "download_raster_assets",
     "get_raster_data_source_config",
     "mosaic_rasters_by_band",
+    "prepare_raster_inputs",
     "resolve_administrative_aoi",
     "update_raster_scene_candidates",
 ]

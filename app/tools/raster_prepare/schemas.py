@@ -128,7 +128,7 @@ class RasterScenePlanRequest(BaseModel):
     boundary_geojson_path: Path | None = None
     start_date: str
     end_date: str
-    max_cloud_cover: float = Field(ge=0, le=100)
+    max_cloud_cover: float = Field(default=30, ge=0, le=100)
     required_bands: list[str] = Field(min_length=1)
     data_source: str = DEFAULT_RASTER_DATA_SOURCE
     limit: int = Field(default=100, ge=1, le=100)
@@ -253,6 +253,57 @@ class RasterMosaicResult(BaseModel):
     """栅格合并结果。"""
 
     band_paths: dict[str, str]
+
+
+class RasterPrepareRequest(BaseModel):
+    """栅格数据准备 pipeline 请求。
+
+    Attributes:
+        aoi_query: 可交给 Nominatim 查询的地点字符串。
+        start_date: 查询开始日期，格式为 ``YYYY-MM-DD``。
+        end_date: 查询结束日期，格式为 ``YYYY-MM-DD``。
+        max_cloud_cover: 允许的最大云量百分比。
+        required_bands: 需要准备的波段，例如 ``B04`` 和 ``B08``。
+        root_dir: 每次运行 UUID workspace 的父目录，默认是 ``data``。
+    """
+
+    aoi_query: str = Field(min_length=1)
+    start_date: str
+    end_date: str
+    max_cloud_cover: float = Field(default=30, ge=0, le=100)
+    required_bands: list[str] = Field(min_length=1)
+    root_dir: Path = Path("data")
+    data_source: str = DEFAULT_RASTER_DATA_SOURCE
+    aoi_limit: int = Field(default=5, ge=1, le=10)
+    scene_limit: int = Field(default=100, ge=1, le=100)
+    max_selected_scenes: int = Field(default=20, ge=1, le=100)
+    contribution_tolerance: float = Field(default=0.95, ge=0, le=1)
+    min_scene_overlap_ratio: float = Field(default=0, ge=0, le=1)
+    min_coverage_ratio: float = Field(default=0.7, ge=0, le=1)
+
+    @field_validator("required_bands")
+    @classmethod
+    def normalize_required_bands(cls, bands: list[str]) -> list[str]:
+        """把波段名称统一转为大写。"""
+
+        return [band.upper() for band in bands]
+
+    @field_validator("data_source")
+    @classmethod
+    def normalize_data_source(cls, data_source: str) -> str:
+        """把数据源名称统一转为小写。"""
+
+        return data_source.lower()
+
+
+class RasterPrepareResult(BaseModel):
+    """栅格数据准备 pipeline 结果。"""
+
+    workspace_dir: str
+    boundary_geojson_path: str
+    band_paths: dict[str, str]
+    scene_ids: list[str]
+    diagnostics: RasterScenePlanDiagnostics
 
 
 class RasterClipRequest(BaseModel):

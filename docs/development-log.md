@@ -184,12 +184,14 @@ nodata 策略明确
 scene plan 可返回 coverage diagnostics
 coverage 默认使用最低可接受阈值而不是 100% 硬门槛
 同一 band 的多张 tif 可先用 first 策略合并成 mosaic GeoTIFF
+prepare pipeline 可串联 AOI、scene plan、download、mosaic、clip
+每次 prepare 运行会创建独立 UUID workspace，并在成功后清理中间 raster
 ```
 
 下一座关键桥是：
 
 ```text
-把 mosaic、clip、指数计算串成 prepare pipeline
+指数计算
 ```
 
-这会把数据准备模块从一组独立工具推进到可被 Agent 节点直接调用的完整工具链。
+这会把已经裁剪好的 B04/B08 输入转换为真正的 NDVI GeoTIFF。

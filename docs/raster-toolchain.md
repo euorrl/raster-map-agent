@@ -313,19 +313,74 @@ index GeoTIFF -> preview PNG
 
 ## Prepare Pipeline
 
-尚未实现。
+当前实现：`prepare_raster_inputs`。
 
-最终职责：
+职责：
 
 ```text
 resolve AOI
--> download bands
+-> scene plan
+-> download raw bands
 -> mosaic bands
 -> clip bands
 -> return prepared inputs for index calculation
 ```
 
-prepare pipeline 是工具链和 Agent workflow 之间的桥。
+输入：
+
+```python
+RasterPrepareRequest(
+    aoi_query="Changsha, Hunan, China",
+    start_date="2023-12-27",
+    end_date="2024-01-09",
+    max_cloud_cover=20,
+    required_bands=["B04", "B08"],
+    root_dir=Path("data"),
+)
+```
+
+每次运行都会在 `root_dir` 下创建一个 UUID workspace：
+
+```text
+data/<uuid>/
+  aoi/
+  raster/
+  mosaic_raster/
+  clipped_raster/
+```
+
+成功完成 clip 后，prepare 会删除中间目录：
+
+```text
+data/<uuid>/raster
+data/<uuid>/mosaic_raster
+```
+
+保留：
+
+```text
+data/<uuid>/aoi
+data/<uuid>/clipped_raster
+```
+
+输出：
+
+```python
+RasterPrepareResult(
+    workspace_dir="data/<uuid>",
+    boundary_geojson_path="data/<uuid>/aoi/Changsha_Hunan_China.geojson",
+    band_paths={
+        "B04": "data/<uuid>/clipped_raster/B04_clipped.tif",
+        "B08": "data/<uuid>/clipped_raster/B08_clipped.tif",
+    },
+    scene_ids=[...],
+    diagnostics=...,
+)
+```
+
+prepare pipeline 是工具链和 Agent workflow 之间的桥。它对外隐藏 AOI、scene plan、
+download、mosaic 和 clip 的内部编排，让后续指数计算模块只需要读取每个 band 一张
+已经裁剪到 AOI 的 GeoTIFF。
 
 ## Coverage Diagnostics 当前规则
 
