@@ -37,7 +37,7 @@ clipped B04 + clipped B08
 - `scripts/`：本地调试脚本
 - `docs/`：项目笔记和设计文档
 - `data/`：本地临时数据
-- `outputs/`：本地生成结果
+- `data/<uuid>/output/`：单次任务的最终输出结果
 
 ## 文档
 

@@ -1,0 +1,123 @@
+from pathlib import Path
+
+import numpy as np
+import pytest
+import rasterio
+from rasterio.transform import from_origin
+
+from app.tools.render_preview import (
+    RenderPreviewError,
+    RenderPreviewRequest,
+    render_index_preview,
+)
+from app.tools.render_preview.render import _apply_colormap, _get_preview_shape
+
+
+def test_render_preview_request_uses_index_tif_parent_as_output_dir(tmp_path):
+    request = RenderPreviewRequest(
+        index_name="ndvi",
+        index_tif_path=tmp_path / "output" / "ndvi.tif",
+    )
+
+    assert request.index_name == "NDVI"
+    assert request.output_path == tmp_path / "output" / "ndvi_preview.png"
+
+
+def test_render_preview_request_allows_custom_output_filename(tmp_path):
+    request = RenderPreviewRequest(
+        index_name="NDWI",
+        index_tif_path=tmp_path / "output" / "ndwi.tif",
+        output_filename="water_preview.png",
+    )
+
+    assert request.output_path == Path(tmp_path / "output" / "water_preview.png")
+
+
+def test_render_preview_request_has_default_max_size(tmp_path):
+    request = RenderPreviewRequest(
+        index_name="NDVI",
+        index_tif_path=tmp_path / "output" / "ndvi.tif",
+    )
+
+    assert request.max_size == 2048
+    assert request.include_colorbar is True
+
+
+def test_render_index_preview_writes_png(tmp_path):
+    index_tif_path = tmp_path / "output" / "ndvi.tif"
+    index_tif_path.parent.mkdir()
+    _write_index_raster(
+        index_tif_path,
+        _make_preview_test_data(),
+    )
+
+    result = render_index_preview(
+        RenderPreviewRequest(index_name="NDVI", index_tif_path=index_tif_path)
+    )
+
+    assert result.preview_path == str(tmp_path / "output" / "ndvi_preview.png")
+    with rasterio.open(result.preview_path) as dataset:
+        assert dataset.driver == "PNG"
+        assert dataset.count == 4
+        assert dataset.height == 272
+        assert dataset.width == 160
+        alpha = dataset.read(4)
+
+    assert alpha[0, 0] == 0
+    assert alpha[1, 1] == 255
+    assert alpha[148, 64] == 255
+    assert alpha[-1, -1] == 0
+
+
+def test_render_index_preview_can_disable_colorbar(tmp_path):
+    index_tif_path = tmp_path / "output" / "ndwi.tif"
+    index_tif_path.parent.mkdir()
+    _write_index_raster(index_tif_path, np.ones((2, 2), dtype="float32"))
+
+    result = render_index_preview(
+        RenderPreviewRequest(
+            index_name="NDWI",
+            index_tif_path=index_tif_path,
+            include_colorbar=False,
+        )
+    )
+
+    with rasterio.open(result.preview_path) as dataset:
+        assert dataset.height == 2
+        assert dataset.width == 2
+
+
+def test_apply_colormap_rejects_unknown_colormap():
+    with pytest.raises(RenderPreviewError, match="Unsupported render colormap"):
+        _apply_colormap(
+            scaled=np.ones((2, 2), dtype="float32"),
+            valid_mask=np.ones((2, 2), dtype="bool"),
+            colormap="unknown",
+        )
+
+
+def test_get_preview_shape_limits_longest_side():
+    assert _get_preview_shape(height=1000, width=2000, max_size=500) == (250, 500)
+    assert _get_preview_shape(height=100, width=200, max_size=500) == (100, 200)
+
+
+def _write_index_raster(path, data):
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=data.shape[0],
+        width=data.shape[1],
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(0, 2, 1, 1),
+        nodata=-9999.0,
+    ) as dataset:
+        dataset.write(data.astype("float32"), 1)
+
+
+def _make_preview_test_data():
+    data = np.linspace(-0.2, 0.8, 120 * 160, dtype="float32").reshape(120, 160)
+    data[0, 0] = -9999.0
+    return data

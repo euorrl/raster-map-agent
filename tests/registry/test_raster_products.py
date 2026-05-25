@@ -15,6 +15,9 @@ def test_get_index_config_returns_ndvi_default_config():
     assert config.name == "NDVI"
     assert config.required_bands == ["B04", "B08"]
     assert config.index_formula == "(nir - red) / (nir + red)"
+    assert config.render_config.vmin == -0.2
+    assert config.render_config.vmax == 0.8
+    assert config.render_config.colormap == "greens"
 
 
 def test_get_index_config_returns_ndwi_config():
@@ -23,6 +26,9 @@ def test_get_index_config_returns_ndwi_config():
     assert config.name == "NDWI"
     assert config.required_bands == ["B03", "B08"]
     assert config.index_formula == "(green - nir) / (green + nir)"
+    assert config.render_config.vmin == -0.5
+    assert config.render_config.vmax == 0.5
+    assert config.render_config.colormap == "blues"
 
 
 def test_resolve_raster_product_config_returns_sentinel2_ndvi():
@@ -32,6 +38,7 @@ def test_resolve_raster_product_config_returns_sentinel2_ndvi():
     assert config.data_source == "sentinel2"
     assert config.required_bands == ["B04", "B08"]
     assert config.band_roles == {"red": "B04", "nir": "B08"}
+    assert config.render_config.colormap == "greens"
     assert config.provider == "earth_search"
     assert config.collection == "sentinel-2-l2a"
     assert config.band_assets["B04"] == "red"
