@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 
 class AgentState(BaseModel):
+    """栅格地图 Agent workflow 中流转的共享状态。"""
+
     user_query: str
 
     product_type: str | None = None
