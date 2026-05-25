@@ -86,6 +86,11 @@ answer_node
 
 真实工具层。工具应尽量保持输入输出清晰，不依赖 LLM。
 
+当前通用工具：
+
+- `workspace/`：创建一次任务级 workspace，后续数据准备、计算和渲染共享该目录
+- `index_calculation/`：读取裁剪后的 band GeoTIFF，计算 NDVI/NDWI 等指数并输出 GeoTIFF
+
 当前 raster prepare 工具结构：
 
 ```text

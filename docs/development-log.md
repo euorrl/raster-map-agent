@@ -272,6 +272,20 @@ prepare pipeline 可串联 AOI、scene plan、download、mosaic、clip
 每次任务先创建独立 UUID workspace，prepare 在该 workspace 内运行并在成功后清理中间 raster
 ```
 
+## 阶段 8：指数计算工具骨架与真实计算
+
+本阶段新增 `app/tools/index_calculation/`。
+
+关键设计：
+
+- 计算模块接收 `workspace_dir`
+- 从 `clipped_raster/` 中按 `band_roles` 推导输入 band 路径
+- 按 registry 传下来的 `index_formula` 计算指数
+- 输出只返回最终 GeoTIFF 路径 `index_tif_path`
+- 当前公式执行只支持受限的四则运算，避免直接执行任意代码
+
+这一步让流程从“数据准备完成”推进到“可以生成真实指数 GeoTIFF”。
+
 下一座关键桥是：
 
 ```text

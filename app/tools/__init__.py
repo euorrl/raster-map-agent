@@ -2,6 +2,7 @@ from app.tools.index_calculation import (
     IndexCalculationError,
     IndexCalculationRequest,
     IndexCalculationResult,
+    calculate_raster_index,
 )
 from app.tools.raster_prepare import (
     AOIRequest,
@@ -61,6 +62,7 @@ __all__ = [
     "WorkspaceResult",
     "build_raster_scene_plan",
     "build_raster_scene_plan_from_candidates",
+    "calculate_raster_index",
     "clip_raster_to_aoi",
     "create_workspace",
     "download_raster_assets",

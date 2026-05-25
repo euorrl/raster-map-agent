@@ -374,9 +374,38 @@ prepare pipeline 是工具链和 Agent workflow 之间的桥。它对外隐藏 A
 
 ## Index Calculation
 
-尚未实现。
+当前实现：`calculate_raster_index`。
 
-NDVI 计划：
+职责：
+
+```text
+读取 workspace/clipped_raster 中的 band GeoTIFF
+-> 根据 band_roles 把公式变量映射到真实 band
+-> 用受限公式解析执行四则运算
+-> 写出 workspace/output/<index>.tif
+-> 返回 index_tif_path
+```
+
+输入示例：
+
+```python
+IndexCalculationRequest(
+    workspace_dir=Path("data/<uuid>"),
+    index_name="NDVI",
+    band_roles={"red": "B04", "nir": "B08"},
+    index_formula="(nir - red) / (nir + red)",
+)
+```
+
+输出示例：
+
+```python
+IndexCalculationResult(
+    index_tif_path="data/<uuid>/output/ndvi.tif",
+)
+```
+
+NDVI：
 
 ```text
 NDVI = (B08 - B04) / (B08 + B04)
@@ -386,13 +415,14 @@ NDVI = (B08 - B04) / (B08 + B04)
 
 - 输入 clipped bands 是 `float32`
 - nodata 是 `-9999.0`
-- 计算前必须构建 valid mask
-- 避免 `(nir + red) == 0`
+- 计算前会基于每个输入 band 构建 valid mask
+- 公式结果中的 `inf` 和 `nan` 会写成 nodata
+- 输入 bands 必须已经对齐到同一 shape、transform 和 CRS
 
-建议输出：
+默认输出：
 
 ```text
-outputs/ndvi.tif
+data/<uuid>/output/ndvi.tif
 ```
 
 ## Render
