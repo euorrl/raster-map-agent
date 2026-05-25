@@ -34,9 +34,9 @@ Agent 基础：
 - GeoTIFF clip
 - `prepare_raster_inputs` 数据准备 pipeline
 - `calculate_raster_index` 指数计算工具
-- `render_preview` 渲染接口
+- `render_index_preview` 基础 PNG 渲染工具
 
-当前工具链已经可以输出真实指数 GeoTIFF：
+当前工具链已经可以输出真实指数 GeoTIFF 和预览 PNG：
 
 ```text
 AOI query
@@ -48,24 +48,17 @@ AOI query
 -> clip bands
 -> clipped B04 / clipped B08
 -> NDVI / NDWI GeoTIFF
+-> preview PNG
 ```
 
-## 下一阶段：渲染与 metadata
+## 下一阶段：metadata
 
 目标：
 
 ```text
-index GeoTIFF
--> preview PNG
+index GeoTIFF + preview PNG
 -> metadata JSON
 ```
-
-渲染需要处理：
-
-- nodata mask
-- registry 中的 colormap
-- registry 中的 vmin / vmax
-- PNG 输出
 
 metadata 需要记录：
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class RenderPreviewError(RuntimeError):
@@ -14,11 +14,15 @@ class RenderPreviewRequest(BaseModel):
         index_name: 指数名称，例如 ``NDVI``。
         index_tif_path: 指数 GeoTIFF 路径。
         output_filename: 可选输出文件名，不传则自动生成。
+        max_size: 预览图最长边像素数。
+        include_colorbar: 是否在 PNG 右下角绘制简化色带图例。
     """
 
     index_name: str
     index_tif_path: Path
     output_filename: str | None = None
+    max_size: int = Field(default=2048, ge=256, le=8192)
+    include_colorbar: bool = True
 
     @property
     def output_path(self) -> Path:

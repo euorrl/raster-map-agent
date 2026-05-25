@@ -311,3 +311,35 @@ NDWI -> vmin=-0.5, vmax=0.5, colormap=blues
 ```
 
 同时新增 `render_preview` 接口骨架，让渲染模块后续只需要接收 `index_name + index_tif_path`，并返回一个 `preview_path`。
+
+## 阶段 11：基础渲染预览工具
+
+本阶段把 `render_preview` 从接口骨架推进为可运行工具。
+
+关键设计：
+
+- 渲染模块接收 `index_name + index_tif_path`
+- 通过 `index_name` 从 registry 读取 `vmin`、`vmax` 和 `colormap`
+- 读取单波段指数 GeoTIFF
+- 根据 nodata 和非有限值构建有效像素 mask
+- 将指数值按 `vmin / vmax` 裁剪并归一化到 0 到 1
+- 渲染前按最长边 `max_size=2048` 做降采样，避免大范围 GeoTIFF 直接造成内存压力
+- 根据简化色带生成 RGBA PNG
+- nodata 区域写入透明 alpha
+- 默认在 PNG 右下角绘制紧凑 colorbar，并显示 `vmin / vmax` 数值，帮助快速理解色带方向
+- 输出只返回 `preview_path`
+
+当前 V1 支持：
+
+```text
+NDVI -> greens
+NDWI -> blues
+```
+
+本阶段新增的本地验证脚本：
+
+```text
+scripts/run_render_preview.py
+```
+
+渲染模块当前仍保持轻量实现，不引入 matplotlib 或 Pillow。这样可以先打通本地完整链条，后续如果需要更专业的色带、图例、标题或降采样策略，再单独扩展。

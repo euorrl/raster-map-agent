@@ -429,7 +429,7 @@ data/<uuid>/output/ndvi.tif
 
 ## Render
 
-当前已定义接口，真实 PNG 渲染逻辑尚未实现。
+当前已实现基础 PNG 预览图渲染。
 
 目标：
 
@@ -437,12 +437,14 @@ data/<uuid>/output/ndvi.tif
 index GeoTIFF -> preview PNG
 ```
 
-需要处理：
+当前处理：
 
 - nodata mask
 - registry 中的 `vmin` / `vmax`
 - registry 中的 `colormap`
-- 输出 PNG
+- `max_size` 最长边降采样，默认 2048，避免把完整 GeoTIFF 直接渲染成超大 PNG
+- RGBA PNG 输出，nodata 像素写入透明 alpha
+- 默认在 PNG 右下角绘制紧凑 colorbar，并显示 `vmin / vmax` 数值，可通过 `include_colorbar=False` 关闭
 
 接口计划：
 
@@ -450,6 +452,7 @@ index GeoTIFF -> preview PNG
 RenderPreviewRequest(
     index_name="NDVI",
     index_tif_path=Path("data/<uuid>/output/ndvi.tif"),
+    include_colorbar=True,
 )
 ```
 
@@ -460,3 +463,12 @@ RenderPreviewResult(
     preview_path="data/<uuid>/output/ndvi_preview.png",
 )
 ```
+
+当前 V1 支持的简化色带：
+
+```text
+NDVI -> greens
+NDWI -> blues
+```
+
+渲染模块不重新判断指数语义，只通过 `index_name` 从 registry 读取渲染配置。这样后续如果要调整 NDVI / NDWI 的拉伸范围或色带，只需要修改注册表。
