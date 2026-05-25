@@ -23,7 +23,7 @@ Agent 基础：
 工具基础：
 
 - logging
-- index registry 雏形
+- raster product registry 雏形
 - AOI 解析
 - Sentinel-2 scene plan
 - 多 scene band asset 下载

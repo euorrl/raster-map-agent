@@ -9,8 +9,11 @@ from urllib.request import Request, urlopen
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from app.tools.raster_prepare.schemas import (
+from app.registry import (
     DEFAULT_RASTER_DATA_SOURCE,
+    get_raster_prepare_data_source_config,
+)
+from app.tools.raster_prepare.schemas import (
     RasterDownloadAsset,
     RasterDownloadError,
     RasterScene,
@@ -18,7 +21,6 @@ from app.tools.raster_prepare.schemas import (
     RasterScenePlanDiagnostics,
     RasterScenePlanResult,
     RasterScenePlanRequest,
-    get_raster_data_source_config,
 )
 from app.utils.logging import get_logger
 
@@ -86,7 +88,7 @@ def build_raster_scene_plan_from_candidates(
 ) -> RasterScenePlanResult:
     """从全局候选池中选择覆盖贡献最大的 scenes，并生成下载计划。"""
 
-    config = get_raster_data_source_config(data_source)
+    config = get_raster_prepare_data_source_config(data_source)
     candidate_scenes = list(store.scenes.values())
 
     if not candidate_scenes:
@@ -122,7 +124,7 @@ def build_raster_scene_plan_from_candidates(
             boundary_geojson_path,
             min_coverage_ratio,
         ),
-        data_source=config.data_source,
+        data_source=config.name,
         provider=config.provider,
         collection=config.collection,
     )
@@ -131,7 +133,7 @@ def build_raster_scene_plan_from_candidates(
 def _search_earth_search(request: RasterScenePlanRequest) -> list[RasterScene]:
     """调用 Earth Search STAC API 搜索候选 scene。"""
 
-    config = get_raster_data_source_config(request.data_source)
+    config = get_raster_prepare_data_source_config(request.data_source)
     payload = {
         "collections": [config.collection],
         "bbox": request.bbox,

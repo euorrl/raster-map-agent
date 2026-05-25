@@ -59,7 +59,7 @@ workflow 顺序是否清楚
 - `get_logger`
 - 日志测试
 - 补全必要的 `__init__.py`
-- 整理 registry，拆出 `app/registry/indices.py`
+- 整理 registry，拆出指数和数据源配置
 
 关键判断：
 
@@ -248,6 +248,7 @@ source
 关键设计：
 
 - 每次运行在 `data/` 下创建独立 UUID workspace
+- 对外接收 `index_name + data_source`，并通过 registry 展开 required bands
 - 中间目录包括 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/`
 - 成功完成 clip 后删除 `raster/` 和 `mosaic_raster/`
 - 保留 `aoi/` 和 `clipped_raster/`

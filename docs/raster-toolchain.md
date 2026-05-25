@@ -111,7 +111,23 @@ provider="earth_search"
 collection="sentinel-2-l2a"
 ```
 
-`data_source` 是给上游 planner/ReAct 使用的稳定协议字段。当前只支持 `sentinel2`，不自动切换 Landsat、MODIS 或其他 provider。
+`data_source` 是给上游 planner/ReAct 使用的稳定协议字段。registry 中已经保留 Landsat 的指数波段映射，但当前 `raster_prepare` 只执行 `sentinel2`，不自动切换 Landsat、MODIS 或其他 provider。
+
+指数和数据源知识位于：
+
+```text
+app/registry/raster_products.py
+```
+
+其中 registry 负责解析：
+
+```text
+index_name + data_source
+-> required_bands
+-> band_roles
+-> index_formula
+-> provider / collection / band asset mapping
+```
 
 输入：
 
@@ -323,10 +339,10 @@ resolve AOI
 ```python
 RasterPrepareRequest(
     aoi_query="Chengdu, Sichuan, China",
+    index_name="NDVI",
     start_date="2023-12-01",
     end_date="2024-01-31",
     max_cloud_cover=30,
-    required_bands=["B04", "B08"],
     root_dir=Path("data"),
 )
 ```
@@ -337,6 +353,11 @@ RasterPrepareRequest(
 RasterPrepareResult(
     workspace_dir="data/<uuid>",
     boundary_geojson_path="data/<uuid>/aoi/Chengdu_Sichuan_China.geojson",
+    index_name="NDVI",
+    data_source="sentinel2",
+    required_bands=["B04", "B08"],
+    band_roles={"red": "B04", "nir": "B08"},
+    index_formula="(nir - red) / (nir + red)",
     band_paths={
         "B04": "data/<uuid>/clipped_raster/B04_clipped.tif",
         "B08": "data/<uuid>/clipped_raster/B08_clipped.tif",

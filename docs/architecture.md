@@ -69,13 +69,15 @@ answer_node
 
 当前：
 
-- NDVI 配置
-- required bands
-- formula
+- `raster_products.py`
+- Sentinel-2 数据源配置
+- Landsat 数据源注册信息
+- NDVI / NDWI 指数配置
+- 指数在不同数据源下的 band roles
+- 解析 `index_name + data_source` 的产品配置
 
 后续扩展：
 
-- NDWI
 - NDBI
 - SAVI
 - 其他专题图产品

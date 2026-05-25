@@ -17,10 +17,10 @@ def main() -> None:
 
     result = prepare_raster_inputs(
         RasterPrepareRequest(
-            aoi_query="Chengdu, Sichuan, China",
+            aoi_query="Beijing, China",
+            index_name="NDWI",
             start_date="2023-12-27",
             end_date="2024-01-09",
-            required_bands=["B04", "B08"],
             root_dir=Path("data"),
         )
     )

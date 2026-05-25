@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 from uuid import uuid4
 
+from app.registry import resolve_raster_product_config
 from app.tools.raster_prepare.aoi import resolve_administrative_aoi
 from app.tools.raster_prepare.clip import clip_raster_to_aoi
 from app.tools.raster_prepare.download import download_raster_assets
@@ -30,6 +31,10 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
 
     workspace_dir = _create_workspace_dir(request.root_dir)
     logger.info("Preparing raster inputs workspace_dir=%s", workspace_dir)
+    product_config = resolve_raster_product_config(
+        request.index_name,
+        request.data_source,
+    )
 
     aoi = resolve_administrative_aoi(
         AOIRequest(
@@ -45,7 +50,7 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
             start_date=request.start_date,
             end_date=request.end_date,
             max_cloud_cover=request.max_cloud_cover,
-            required_bands=request.required_bands,
+            required_bands=product_config.required_bands,
             data_source=request.data_source,
             limit=request.scene_limit,
             max_selected_scenes=request.max_selected_scenes,
@@ -80,6 +85,11 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
     return RasterPrepareResult(
         workspace_dir=str(workspace_dir),
         boundary_geojson_path=aoi.boundary_geojson_path,
+        index_name=product_config.index_name,
+        data_source=product_config.data_source,
+        required_bands=product_config.required_bands,
+        band_roles=product_config.band_roles,
+        index_formula=product_config.index_formula,
         band_paths=band_paths,
         scene_ids=scene_plan.scene_ids,
         diagnostics=scene_plan.diagnostics,

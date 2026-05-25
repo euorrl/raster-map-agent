@@ -2,12 +2,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-EARTH_SEARCH_COLLECTION = "sentinel-2-l2a"
-EARTH_SEARCH_BAND_ASSETS = {
-    "B04": "red",
-    "B08": "nir",
-}
-DEFAULT_RASTER_DATA_SOURCE = "sentinel2"
+from app.registry import (
+    DEFAULT_RASTER_DATA_SOURCE,
+    resolve_raster_product_config,
+    get_raster_prepare_data_source_config,
+)
 
 AOI_DIRNAME = "aoi"
 RASTER_DIRNAME = "raster"
@@ -25,43 +24,6 @@ class RasterClipError(RuntimeError):
 
 class RasterMosaicError(RuntimeError):
     """栅格合并失败时抛出的错误。"""
-
-
-class RasterDataSourceConfig(BaseModel):
-    """栅格数据源的内部配置。
-
-    V1 只登记 Sentinel-2。保留 data_source 字段是为了让上游 plan
-    有稳定的参数协议，但当前不承诺多卫星/多 provider 支持。
-    """
-
-    data_source: str
-    provider: str
-    collection: str
-    band_assets: dict[str, str]
-
-
-RASTER_DATA_SOURCE_CONFIGS: dict[str, RasterDataSourceConfig] = {
-    DEFAULT_RASTER_DATA_SOURCE: RasterDataSourceConfig(
-        data_source=DEFAULT_RASTER_DATA_SOURCE,
-        provider="earth_search",
-        collection=EARTH_SEARCH_COLLECTION,
-        band_assets=EARTH_SEARCH_BAND_ASSETS,
-    )
-}
-SUPPORTED_RASTER_DATA_SOURCES = tuple(RASTER_DATA_SOURCE_CONFIGS)
-
-
-def get_raster_data_source_config(data_source: str) -> RasterDataSourceConfig:
-    """根据数据源名称返回内部 STAC 配置。"""
-
-    try:
-        return RASTER_DATA_SOURCE_CONFIGS[data_source]
-    except KeyError as error:
-        supported_sources = ", ".join(SUPPORTED_RASTER_DATA_SOURCES)
-        raise ValueError(
-            f"Unsupported raster data source: {data_source}. "
-            f"V1 only supports: {supported_sources}"
-        ) from error
 
 
 class AOIRequest(BaseModel):
@@ -139,7 +101,7 @@ class RasterScenePlanRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_scene_plan_request(self):
-        config = get_raster_data_source_config(self.data_source)
+        config = get_raster_prepare_data_source_config(self.data_source)
         unsupported_bands = [
             band for band in self.required_bands if band not in config.band_assets
         ]
@@ -260,18 +222,18 @@ class RasterPrepareRequest(BaseModel):
 
     Attributes:
         aoi_query: 可交给 Nominatim 查询的地点字符串。
+        index_name: 需要准备数据的指数名称，例如 ``NDVI``。
         start_date: 查询开始日期，格式为 ``YYYY-MM-DD``。
         end_date: 查询结束日期，格式为 ``YYYY-MM-DD``。
         max_cloud_cover: 允许的最大云量百分比。
-        required_bands: 需要准备的波段，例如 ``B04`` 和 ``B08``。
         root_dir: 每次运行 UUID workspace 的父目录，默认是 ``data``。
     """
 
     aoi_query: str = Field(min_length=1)
+    index_name: str = "NDVI"
     start_date: str
     end_date: str
     max_cloud_cover: float = Field(default=30, ge=0, le=100)
-    required_bands: list[str] = Field(min_length=1)
     root_dir: Path = Path("data")
     data_source: str = DEFAULT_RASTER_DATA_SOURCE
     aoi_limit: int = Field(default=5, ge=1, le=10)
@@ -281,12 +243,23 @@ class RasterPrepareRequest(BaseModel):
     min_scene_overlap_ratio: float = Field(default=0, ge=0, le=1)
     min_coverage_ratio: float = Field(default=0.7, ge=0, le=1)
 
-    @field_validator("required_bands")
-    @classmethod
-    def normalize_required_bands(cls, bands: list[str]) -> list[str]:
-        """把波段名称统一转为大写。"""
+    @model_validator(mode="after")
+    def validate_prepare_request(self):
+        product_config = resolve_raster_product_config(
+            self.index_name,
+            self.data_source,
+        )
+        if not product_config.enabled_for_raster_prepare:
+            get_raster_prepare_data_source_config(self.data_source)
 
-        return [band.upper() for band in bands]
+        return self
+
+    @field_validator("index_name")
+    @classmethod
+    def normalize_index_name(cls, index_name: str) -> str:
+        """把指数名称统一转为大写。"""
+
+        return index_name.upper()
 
     @field_validator("data_source")
     @classmethod
@@ -301,6 +274,11 @@ class RasterPrepareResult(BaseModel):
 
     workspace_dir: str
     boundary_geojson_path: str
+    index_name: str
+    data_source: str
+    required_bands: list[str]
+    band_roles: dict[str, str]
+    index_formula: str
     band_paths: dict[str, str]
     scene_ids: list[str]
     diagnostics: RasterScenePlanDiagnostics

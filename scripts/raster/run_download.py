@@ -5,6 +5,7 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.registry import resolve_raster_product_config  # noqa: E402
 from app.tools.raster_prepare import (
     RasterDownloadRequest,
     RasterSceneCandidateStore,
@@ -20,6 +21,9 @@ def main() -> None:
 
     store = RasterSceneCandidateStore()
     workspace_dir = Path("data/speak2")
+    index_name = "NDVI"
+    data_source = "sentinel2"
+    product_config = resolve_raster_product_config(index_name, data_source)
     boundary_geojson_path = workspace_dir / "aoi" / "Changsha_Hunan_China.geojson"
     plan_requests = (
         RasterScenePlanRequest(
@@ -33,8 +37,8 @@ def main() -> None:
             start_date="2023-12-27",
             end_date="2024-01-09",
             max_cloud_cover=20,
-            required_bands=["B04", "B08"],
-            data_source="sentinel2",
+            required_bands=product_config.required_bands,
+            data_source=product_config.data_source,
             limit=100,
             min_coverage_ratio=0.7,
         ),
@@ -49,8 +53,8 @@ def main() -> None:
             start_date="2023-12-27",
             end_date="2024-01-09",
             max_cloud_cover=20,
-            required_bands=["B04", "B08"],
-            data_source="sentinel2",
+            required_bands=product_config.required_bands,
+            data_source=product_config.data_source,
             limit=100,
             min_coverage_ratio=0.7,
         ),
