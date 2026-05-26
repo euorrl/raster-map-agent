@@ -4,32 +4,31 @@ from typing import Annotated, Any
 from pydantic import BaseModel, Field
 
 
+def merge_dicts(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    """合并 LangGraph 节点返回的动态字典分区。"""
+
+    merged = dict(left)
+    for key, value in right.items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+
+    return merged
+
+
 class AgentState(BaseModel):
     """栅格地图 Agent workflow 中流转的共享状态。"""
 
     user_query: str
 
-    product_type: str | None = None
-    workflow_type: str | None = None
-    index: str | None = None
-    data_source: str | None = None
-
-    aoi_name: str | None = None
-    bbox: list[float] | None = None
-
-    required_bands: list[str] = Field(default_factory=list)
-    index_formula: str | None = None
-
-    selected_scene: str | None = None
-    band_paths: dict[str, str] = Field(default_factory=dict)
-
-    result_tif_path: str | None = None
-    preview_path: str | None = None
-    metadata_path: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    plan: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
+    workspace: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
+    tool_results: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
+    metadata: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
 
     final_answer: str | None = None
 
     status: str = "initialized"
-    errors: list[str] = Field(default_factory=list)
+    errors: Annotated[list[str], operator.add] = Field(default_factory=list)
     warnings: Annotated[list[str], operator.add] = Field(default_factory=list)
