@@ -67,15 +67,17 @@ metadata["tool_name"]
 ```text
 planner_node
 registry_node
-aoi_node
-download_node
-mosaic_node
-clip_node
-process_node
-render_node
-metadata_node
+workspace_node
+raster_prepare_node
+raster_prepare_validator_node
+product_generation_node
 answer_node
 ```
+
+V1 当前采用强约束 workflow：LLM planner 负责生成产品意图和参数，Graph 负责保证执行顺序。
+其中 `raster_prepare_node`、`product_generation_node` 已经接入真实工具入口；测试中通过
+patch 工具函数避免真实网络请求和大文件处理。后续局部 ReAct 将优先围绕
+`raster_prepare_validator_node` 扩展。
 
 ### `app/workflows`
 
@@ -83,7 +85,7 @@ answer_node
 
 当前：
 
-- `v1_workflow.py`
+- `workflow.py`
 - 已经能跑通 mock workflow
 
 后续：

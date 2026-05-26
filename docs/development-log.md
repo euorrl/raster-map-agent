@@ -29,7 +29,7 @@
 
 - `AgentState`
 - mock nodes
-- `v1_workflow`
+- `workflow`
 - workflow 测试
 - warnings reducer 追加验证
 - workflow 编译缓存

@@ -1,7 +1,16 @@
+import json
+from pathlib import Path
 from typing import Any
 
-from app.registry import get_index_config
+from app.registry import resolve_raster_product_config
 from app.schemas import AgentState
+from app.tools.index_calculation import (
+    IndexCalculationRequest,
+    calculate_raster_index,
+)
+from app.tools.raster_prepare import RasterPrepareRequest, prepare_raster_inputs
+from app.tools.render_preview import RenderPreviewRequest, render_index_preview
+from app.tools.workspace import WorkspaceRequest, create_workspace
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
@@ -9,8 +18,15 @@ def planner_node(state: AgentState) -> dict[str, Any]:
         "product_type": "vegetation_distribution_map",
         "index_name": "NDVI",
         "data_source": "sentinel2",
-        "aoi_query": "Milan",
-        "aoi_name": "Milan",
+        "aoi_query": "Chengdu, Sichuan, China",
+        "aoi_name": "Chengdu",
+        "start_date": "2024-06-01",
+        "end_date": "2024-08-31",
+        "max_cloud_cover": 30,
+        "recovery_policy": {
+            "allow_raster_prepare_retry": True,
+            "max_raster_prepare_attempts": 2,
+        },
     }
     return {
         "plan": plan,
@@ -20,10 +36,16 @@ def planner_node(state: AgentState) -> dict[str, Any]:
 
 
 def registry_node(state: AgentState) -> dict[str, Any]:
-    index_config = get_index_config(state.plan.get("index_name", "NDVI"))
+    product_config = resolve_raster_product_config(
+        state.plan.get("index_name", "NDVI"),
+        state.plan.get("data_source", "sentinel2"),
+    )
     registry_result = {
-        "required_bands": index_config.required_bands,
-        "index_formula": index_config.index_formula,
+        "index_name": product_config.index_name,
+        "data_source": product_config.data_source,
+        "required_bands": product_config.required_bands,
+        "band_roles": product_config.band_roles,
+        "index_formula": product_config.index_formula,
     }
     return {
         "plan": registry_result,
@@ -31,50 +53,58 @@ def registry_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-def workflow_router_node(state: AgentState) -> dict[str, Any]:
-    workflow_result = {"workflow_type": "single_index_map"}
+def workspace_node(state: AgentState) -> dict[str, Any]:
+    try:
+        result = create_workspace(WorkspaceRequest())
+    except Exception as error:
+        return {
+            "errors": [f"Workspace creation failed: {error}"],
+            "status": "failed",
+        }
+
+    workspace_result = result.model_dump(mode="json")
     return {
-        "plan": workflow_result,
-        "metadata": {"workflow": workflow_result},
+        "workspace": workspace_result,
+        "metadata": {"workspace": workspace_result},
     }
 
 
-def aoi_node(state: AgentState) -> dict[str, Any]:
-    aoi_result = {
-        "aoi_name": state.plan.get("aoi_name", "Milan"),
-        "bbox": [9.04, 45.35, 9.32, 45.56],
-    }
+def raster_prepare_node(state: AgentState) -> dict[str, Any]:
+    workspace_dir = state.workspace.get("workspace_dir")
+    if not workspace_dir:
+        return {"errors": ["Workspace is missing."], "status": "failed"}
+
+    try:
+        result = prepare_raster_inputs(
+            RasterPrepareRequest(
+                aoi_query=state.plan["aoi_query"],
+                index_name=state.plan["index_name"],
+                data_source=state.plan["data_source"],
+                start_date=state.plan["start_date"],
+                end_date=state.plan["end_date"],
+                max_cloud_cover=state.plan.get("max_cloud_cover", 30),
+                workspace_dir=Path(workspace_dir),
+            )
+        )
+    except Exception as error:
+        return {
+            "errors": [f"Raster prepare failed: {error}"],
+            "status": "failed",
+        }
+
+    raster_prepare_result = result.model_dump(mode="json")
     return {
-        "tool_results": {"aoi": aoi_result},
-        "metadata": {"aoi": aoi_result},
-        "warnings": ["Using mock AOI bounding box for Milan."],
+        "tool_results": {"raster_prepare": raster_prepare_result},
+        "metadata": {"raster_prepare": raster_prepare_result},
     }
 
 
-def download_node(state: AgentState) -> dict[str, Any]:
-    download_result = {
-        "selected_scene": "mock_sentinel2_scene",
-        "band_paths": {
-            "B04": "data/mock_B04.tif",
-            "B08": "data/mock_B08.tif",
-        },
-    }
-    return {
-        "tool_results": {"download": download_result},
-        "metadata": {"download": download_result},
-        "warnings": ["Using mock Sentinel-2 band paths."],
-    }
-
-
-def validator_node(state: AgentState) -> dict[str, Any]:
+def raster_prepare_validator_node(state: AgentState) -> dict[str, Any]:
     errors = []
-    aoi_result = state.tool_results.get("aoi", {})
-    download_result = state.tool_results.get("download", {})
+    raster_prepare_result = state.tool_results.get("raster_prepare", {})
     required_bands = state.plan.get("required_bands", [])
-    band_paths = download_result.get("band_paths", {})
-
-    if not aoi_result.get("aoi_name") or not aoi_result.get("bbox"):
-        errors.append("AOI is missing.")
+    band_paths = raster_prepare_result.get("band_paths", {})
+    diagnostics = raster_prepare_result.get("diagnostics", {})
 
     if not required_bands:
         errors.append("Required bands are missing.")
@@ -83,33 +113,61 @@ def validator_node(state: AgentState) -> dict[str, Any]:
     if missing_bands:
         errors.append(f"Band paths are missing for: {', '.join(missing_bands)}.")
 
+    if diagnostics.get("coverage_status") not in {"covered", None}:
+        errors.append("Raster prepare coverage is not sufficient.")
+
     if errors:
         return {"errors": errors, "status": "failed"}
 
-    return {"errors": [], "status": "validated"}
+    return {"errors": [], "status": "raster_prepared"}
 
 
-def process_node(state: AgentState) -> dict[str, Any]:
-    result = {"result_tif_path": "data/mock/output/mock_ndvi.tif"}
+def product_generation_node(state: AgentState) -> dict[str, Any]:
+    workspace_dir = state.workspace.get("workspace_dir")
+    if not workspace_dir:
+        return {"errors": ["Workspace is missing."], "status": "failed"}
+
+    try:
+        index_result_model = calculate_raster_index(
+            IndexCalculationRequest(
+                workspace_dir=Path(workspace_dir),
+                index_name=state.plan["index_name"],
+                band_roles=state.plan["band_roles"],
+                index_formula=state.plan["index_formula"],
+            )
+        )
+        preview_result_model = render_index_preview(
+            RenderPreviewRequest(
+                index_name=state.plan["index_name"],
+                index_tif_path=Path(index_result_model.index_tif_path),
+            )
+        )
+    except Exception as error:
+        return {
+            "errors": [f"Product generation failed: {error}"],
+            "status": "failed",
+        }
+
+    index_result = index_result_model.model_dump(mode="json")
+    preview_result = preview_result_model.model_dump(mode="json")
+    metadata_result = _export_metadata(
+        workspace_dir=Path(workspace_dir),
+        state=state,
+        index_result=index_result,
+        preview_result=preview_result,
+    )
     return {
-        "tool_results": {"index_calculation": result},
-        "metadata": {"index_calculation": result},
-    }
-
-
-def render_node(state: AgentState) -> dict[str, Any]:
-    result = {"preview_path": "data/mock/output/mock_preview.png"}
-    return {
-        "tool_results": {"render_preview": result},
-        "metadata": {"render_preview": result},
-    }
-
-
-def metadata_node(state: AgentState) -> dict[str, Any]:
-    metadata_result = {"metadata_path": "data/mock/output/mock_metadata.json"}
-    return {
-        "tool_results": {"metadata": metadata_result},
-        "metadata": {"metadata": metadata_result},
+        "tool_results": {
+            "index_calculation": index_result,
+            "render_preview": preview_result,
+            "metadata_export": metadata_result,
+        },
+        "metadata": {
+            "index_calculation": index_result,
+            "render_preview": preview_result,
+            "metadata_export": metadata_result,
+        },
+        "status": "product_generated",
     }
 
 
@@ -123,9 +181,32 @@ def answer_node(state: AgentState) -> dict[str, Any]:
 
     return {
         "final_answer": (
-            "Mock "
-            f"{state.plan.get('index_name')} vegetation map generated for "
-            f"{state.tool_results.get('aoi', {}).get('aoi_name')}."
+            f"{state.plan.get('index_name')} map generated for "
+            f"{state.plan.get('aoi_query')}."
         ),
         "status": "completed",
     }
+
+
+def _export_metadata(
+    workspace_dir: Path,
+    state: AgentState,
+    index_result: dict[str, Any],
+    preview_result: dict[str, Any],
+) -> dict[str, str]:
+    output_dir = workspace_dir / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = output_dir / "metadata.json"
+    metadata = {
+        "plan": state.plan,
+        "workspace": state.workspace,
+        "raster_prepare": state.tool_results.get("raster_prepare", {}),
+        "index_calculation": index_result,
+        "render_preview": preview_result,
+        "warnings": state.warnings,
+    }
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return {"metadata_path": str(metadata_path)}
