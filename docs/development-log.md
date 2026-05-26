@@ -44,9 +44,20 @@ workflow 顺序是否清楚
 
 关键判断：
 
-- V1 state 先保持结构清楚，不追求动态扩展过度设计
+- 早期 V1 state 先保持结构清楚，不追求动态扩展过度设计
 - 最终改用 Pydantic，是为了运行时校验和后续忘记补类型检查的风险更低
 - validator node 与 Pydantic 不冲突：Pydantic 负责结构和类型，validator node 负责业务完整性
+
+后续随着真实工具链成形，`AgentState` 从早期摊平字段调整为分区式动态 state：
+
+```text
+plan
+workspace
+tool_results
+metadata
+```
+
+这个设计让每个节点只需要把工具结果写入自己的分区，避免新增工具时不断扩展 state 顶层字段。
 
 ## 阶段 3：日志与基础模块整理
 

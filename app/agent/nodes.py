@@ -5,57 +5,81 @@ from app.schemas import AgentState
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
-    return {
+    plan = {
         "product_type": "vegetation_distribution_map",
-        "index": "NDVI",
+        "index_name": "NDVI",
         "data_source": "sentinel2",
+        "aoi_query": "Milan",
         "aoi_name": "Milan",
+    }
+    return {
+        "plan": plan,
+        "metadata": {"plan": plan},
+        "status": "planned",
     }
 
 
 def registry_node(state: AgentState) -> dict[str, Any]:
-    index_config = get_index_config(state.index or "NDVI")
-    return {
+    index_config = get_index_config(state.plan.get("index_name", "NDVI"))
+    registry_result = {
         "required_bands": index_config.required_bands,
         "index_formula": index_config.index_formula,
+    }
+    return {
+        "plan": registry_result,
+        "metadata": {"registry": registry_result},
     }
 
 
 def workflow_router_node(state: AgentState) -> dict[str, Any]:
-    return {"workflow_type": "single_index_map"}
+    workflow_result = {"workflow_type": "single_index_map"}
+    return {
+        "plan": workflow_result,
+        "metadata": {"workflow": workflow_result},
+    }
 
 
 def aoi_node(state: AgentState) -> dict[str, Any]:
-    return {
-        "aoi_name": state.aoi_name or "Milan",
+    aoi_result = {
+        "aoi_name": state.plan.get("aoi_name", "Milan"),
         "bbox": [9.04, 45.35, 9.32, 45.56],
+    }
+    return {
+        "tool_results": {"aoi": aoi_result},
+        "metadata": {"aoi": aoi_result},
         "warnings": ["Using mock AOI bounding box for Milan."],
     }
 
 
 def download_node(state: AgentState) -> dict[str, Any]:
-    return {
+    download_result = {
         "selected_scene": "mock_sentinel2_scene",
         "band_paths": {
             "B04": "data/mock_B04.tif",
             "B08": "data/mock_B08.tif",
         },
+    }
+    return {
+        "tool_results": {"download": download_result},
+        "metadata": {"download": download_result},
         "warnings": ["Using mock Sentinel-2 band paths."],
     }
 
 
 def validator_node(state: AgentState) -> dict[str, Any]:
     errors = []
+    aoi_result = state.tool_results.get("aoi", {})
+    download_result = state.tool_results.get("download", {})
+    required_bands = state.plan.get("required_bands", [])
+    band_paths = download_result.get("band_paths", {})
 
-    if not state.aoi_name or not state.bbox:
+    if not aoi_result.get("aoi_name") or not aoi_result.get("bbox"):
         errors.append("AOI is missing.")
 
-    if not state.required_bands:
+    if not required_bands:
         errors.append("Required bands are missing.")
 
-    missing_bands = [
-        band for band in state.required_bands if band not in state.band_paths
-    ]
+    missing_bands = [band for band in required_bands if band not in band_paths]
     if missing_bands:
         errors.append(f"Band paths are missing for: {', '.join(missing_bands)}.")
 
@@ -66,23 +90,26 @@ def validator_node(state: AgentState) -> dict[str, Any]:
 
 
 def process_node(state: AgentState) -> dict[str, Any]:
-    return {"result_tif_path": "outputs/mock_ndvi.tif"}
+    result = {"result_tif_path": "data/mock/output/mock_ndvi.tif"}
+    return {
+        "tool_results": {"index_calculation": result},
+        "metadata": {"index_calculation": result},
+    }
 
 
 def render_node(state: AgentState) -> dict[str, Any]:
-    return {"preview_path": "outputs/mock_preview.png"}
+    result = {"preview_path": "data/mock/output/mock_preview.png"}
+    return {
+        "tool_results": {"render_preview": result},
+        "metadata": {"render_preview": result},
+    }
 
 
 def metadata_node(state: AgentState) -> dict[str, Any]:
-    metadata = {
-        "product_type": state.product_type,
-        "index": state.index,
-        "aoi_name": state.aoi_name,
-        "data_source": state.data_source,
-    }
+    metadata_result = {"metadata_path": "data/mock/output/mock_metadata.json"}
     return {
-        "metadata": metadata,
-        "metadata_path": "outputs/mock_metadata.json",
+        "tool_results": {"metadata": metadata_result},
+        "metadata": {"metadata": metadata_result},
     }
 
 
@@ -96,7 +123,9 @@ def answer_node(state: AgentState) -> dict[str, Any]:
 
     return {
         "final_answer": (
-            f"Mock {state.index} vegetation map generated for {state.aoi_name}."
+            "Mock "
+            f"{state.plan.get('index_name')} vegetation map generated for "
+            f"{state.tool_results.get('aoi', {}).get('aoi_name')}."
         ),
         "status": "completed",
     }

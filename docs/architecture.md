@@ -29,6 +29,35 @@ data/
 - `AgentState`
 - workflow 节点之间共享的状态字段
 
+当前 `AgentState` 采用“稳定顶层 + 动态分区”的设计：
+
+```text
+user_query
+plan
+workspace
+tool_results
+metadata
+status
+errors
+warnings
+final_answer
+```
+
+设计意图：
+
+- `plan` 保存 planner 生成的结构化参数
+- `workspace` 保存任务级 workspace 路径
+- `tool_results` 保存各工具的原始返回结果
+- `metadata` 保存后续写入 metadata JSON 的分区化内容
+- `errors` 和 `warnings` 使用追加 reducer，便于多个节点累积反馈
+
+这样新增工具时，不需要不断向 state 顶层添加字段，而是写入：
+
+```text
+tool_results["tool_name"]
+metadata["tool_name"]
+```
+
 ### `app/agent`
 
 存放 LangGraph 节点函数。
