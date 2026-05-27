@@ -66,10 +66,7 @@ def test_raster_prepare_validator_routes_retryable_result_to_adjuster():
     assert result.reasons == ["insufficient_spatial_coverage"]
     assert "expand_date_range" in result.suggested_actions
     assert update["status"] == "raster_prepare_retryable"
-    assert (
-        update["runtime"]["validators"]["raster_prepare"]["status"]
-        == "retryable"
-    )
+    assert update["runtime"]["validators"]["raster_prepare"]["status"] == "retryable"
 
 
 def test_raster_prepare_validator_fails_when_band_path_is_missing():

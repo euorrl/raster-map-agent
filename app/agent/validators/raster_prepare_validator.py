@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 
 from app.schemas import AgentState
 
-
 RasterPrepareValidationStatus = Literal["passed", "retryable", "failed"]
 
 
@@ -46,9 +45,7 @@ def validate_raster_prepare_result(
         return _failed(["missing_raster_prepare_result"])
 
     required_bands = (
-        state.plan.get("required_bands")
-        or prepare_result.get("required_bands")
-        or []
+        state.plan.get("required_bands") or prepare_result.get("required_bands") or []
     )
     if not required_bands:
         return _failed(["missing_required_bands"])
@@ -63,9 +60,7 @@ def validate_raster_prepare_result(
 
     if coverage_status == "covered" or coverage_ratio >= min_coverage_ratio:
         band_paths = _as_dict(prepare_result.get("band_paths"))
-        missing_bands = [
-            band for band in required_bands if not band_paths.get(band)
-        ]
+        missing_bands = [band for band in required_bands if not band_paths.get(band)]
         if missing_bands:
             return _failed([f"missing_band_paths:{','.join(missing_bands)}"])
 
