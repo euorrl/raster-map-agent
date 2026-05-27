@@ -14,7 +14,7 @@ theme:
 
 nav:
   - 首页: index.md
-  - 开发阶段记录: development-log.md
+  - 开发日志: development-log.md
   - 项目架构: architecture.md
   - 栅格工具链: raster-toolchain.md
   - Scene 选择算法迭代: scene-selection-evolution.md

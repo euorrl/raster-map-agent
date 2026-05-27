@@ -1,131 +1,129 @@
 # 路线图
 
-本文记录 V1 和 V2 的计划边界。
+本文记录 V1 和 V2 的边界。
 
-## 当前已完成
+## 已完成
 
 工程基础：
 
 - Python 项目结构
-- 依赖文件
 - black / flake8 / pytest / coverage
-- pre-commit
 - CI
-- Read the Docs / MkDocs 配置
+- MkDocs / ReadTheDocs 配置
 
 Agent 基础：
 
 - mock LangGraph workflow
-- Pydantic state
-- mock nodes
-- workflow 测试
+- Pydantic `AgentState`
+- 动态 state 分区
+- `runtime` 运行时控制分区
+- agent validator / adjuster / policy 文件骨架
 
-工具基础：
+工具链：
 
-- logging
 - workspace 创建工具
-- raster product registry 雏形
-- 指数默认渲染配置
-- AOI 解析
+- raster product registry
+- Nominatim AOI 解析
 - Sentinel-2 scene plan
-- 多 scene band asset 下载
 - Shapely coverage diagnostics
+- band asset 下载
 - first mosaic by band
-- GeoTIFF clip
-- `prepare_raster_inputs` 数据准备 pipeline
-- `calculate_raster_index` 指数计算工具
-- `render_index_preview` 基础 PNG 渲染工具
+- AOI clip
+- `prepare_raster_inputs`
+- `calculate_raster_index`
+- `render_index_preview`
 
-当前工具链已经可以输出真实指数 GeoTIFF 和预览 PNG：
+真实工具链已经可以生成：
 
 ```text
-AOI query
--> workspace
--> AOI GeoJSON + bbox
--> scene plan
--> download raw bands
--> mosaic bands
--> clip bands
--> clipped B04 / clipped B08
--> NDVI / NDWI GeoTIFF
--> preview PNG
+clipped band GeoTIFF
+index GeoTIFF
+preview PNG
 ```
 
-## 下一阶段：metadata
+## 当前阶段：Agent Validation Policy
+
+当前分支目标：
+
+```text
+为 Agent 引入 validator / adjuster / retry runtime 基础结构
+```
+
+主要任务：
+
+- 完善 `AgentState.runtime`
+- 设计 raster_prepare validator
+- 设计 raster_prepare adjuster
+- 设计 tool policy 结构
+- 为后续局部 ReAct 准备 retry 计数和路由依据
+
+这一阶段不强行接入 LLM，也不要求改造完整 workflow。
+
+## 下一阶段：V1 Agent Tool Integration
 
 目标：
 
 ```text
-index GeoTIFF + preview PNG
--> metadata JSON
+mock workflow
+-> 真实工具入口编排
 ```
 
-metadata 需要记录：
-
-- AOI 名称和边界路径
-- data source
-- scene ids
-- coverage diagnostics
-- band paths
-- index formula
-- index GeoTIFF 路径
-- preview PNG 路径
-
-## 下一阶段：planner
-
-输入示例：
+建议 workflow：
 
 ```text
-Generate an NDVI vegetation map for Hangzhou, Zhejiang, China.
+planner
+-> registry
+-> workspace
+-> raster_prepare
+-> raster_prepare_validator
+-> product_generation
+-> answer
 ```
 
-输出示例：
+其中 `product_generation` 暂时包括：
+
+- index calculation
+- render preview
+- metadata export
+
+## 后续阶段：Planner
+
+Planner 负责把自然语言转成结构化计划：
 
 ```json
 {
-  "aoi_query": "Hangzhou, Zhejiang, China",
-  "index": "NDVI",
-  "date_range": ["2024-06-01", "2024-08-31"],
-  "max_cloud_cover": 30,
-  "data_source": "sentinel2"
+  "aoi_query": "Chengdu, Sichuan, China",
+  "index_name": "NDVI",
+  "data_source": "sentinel2",
+  "start_date": "2024-06-01",
+  "end_date": "2024-08-31",
+  "max_cloud_cover": 30
 }
 ```
 
-planner 初期可以简单，不需要复杂对话。它的重点是生成能对齐真实工具链的稳定参数。
+V1 中 planner 可以先是受约束的结构化输出，不追求完全自由 tool planning。
 
-## 下一阶段：局部 ReAct
+## 后续阶段：局部 ReAct
 
-ReAct 不作为主流程一开始就引入，而是用于容易失败的局部环节。
+局部 ReAct 优先发生在 `raster_prepare` 阶段。
 
-适合位置：
+典型场景：
 
-- AOI 查询失败：修改 query
-- scene plan 覆盖不足：扩大时间窗、放宽云量或增加 limit
-- coverage diagnostics 标记不可重试：结束循环并返回明确说明
-- 渲染异常：调整 nodata 或拉伸参数
+- AOI 查询失败：调整 `aoi_query`
+- coverage 不足：扩大时间范围、放宽云量或增加 scene limit
+- diagnostics 标记不可重试：终止循环并返回明确原因
 
-## 下一阶段：answer
-
-根据 metadata 和产品路径生成最终回答。
-
-示例：
-
-```text
-NDVI vegetation map generated for Hangzhou, Zhejiang, China.
-Preview: data/<uuid>/output/...
-GeoTIFF: data/<uuid>/output/...
-Coverage: 94.8%
-```
+循环次数由 `state.runtime` 中的 per-tool retry 计数控制。
 
 ## V1 完成标准
 
-本地运行：
+本地完整运行：
 
 ```text
 用户自然语言请求
 -> Agent workflow
 -> 真实工具链
--> 输出 GeoTIFF + PNG + metadata + final answer
+-> GeoTIFF + PNG + metadata + final answer
 ```
 
 V1 不要求：
@@ -134,7 +132,7 @@ V1 不要求：
 - MCP server
 - 部署
 - 多用户系统
-- 复杂人机交互
+- 完全自由 tool-calling agent
 
 ## V2 方向
 
@@ -143,28 +141,10 @@ V2 是产品化与标准化阶段：
 - MCP server 化
 - FastAPI 后端
 - 前端
-- 部署
 - 任务队列
 - 缓存
 - 更复杂的 ReAct
 - 多 AOI provider
-- 多数据源
+- 更多数据源
 - 更多指数和专题图产品
-
-## 当前 Coverage 规则
-
-scene plan 仍然使用 AOI bbox 进行 STAC 搜索，但 coverage diagnostics 已改为读取真实 AOI GeoJSON。
-
-判断对象是：
-
-```text
-scene footprint union 对 AOI GeoJSON geometry 的覆盖率
-```
-
-当前 V1 不再要求 100% 覆盖，而是使用最低可接受阈值：
-
-```python
-min_coverage_ratio = 0.7
-```
-
-如果 AOI GeoJSON 缺失或无效，diagnostics 会返回 `unknown` 和 `is_retriable=false`，表示当前问题不是可通过日期、云量或 limit 调整解决的。
+- Guarded tool-calling agent runtime
