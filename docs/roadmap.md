@@ -17,7 +17,7 @@ Agent 基础：
 - Pydantic `AgentState`
 - 动态 state 分区
 - `runtime` 运行时控制分区
-- agent validator / adjuster / policy 文件骨架
+- agent validator / adjuster / policy 注册表
 
 工具链：
 
@@ -52,12 +52,12 @@ preview PNG
 主要任务：
 
 - 完善 `AgentState.runtime`
-- 设计 raster_prepare validator
-- 设计 raster_prepare adjuster
-- 设计 tool policy 结构
-- 为后续局部 ReAct 准备 retry 计数和路由依据
+- 实现 raster_prepare validator
+- 实现基于智谱模型的 raster_prepare adjuster
+- 实现 tool policy 注册表
+- 为局部 ReAct 准备 retry 计数和路由依据
 
-这一阶段不强行接入 LLM，也不要求改造完整 workflow。
+这一阶段已经具备真实 LLM adjuster 调用能力，但测试通过 fake client 离线验证，不要求改造完整 workflow。
 
 ## 下一阶段：V1 Agent Tool Integration
 
@@ -97,7 +97,7 @@ Planner 负责把自然语言转成结构化计划：
   "data_source": "sentinel2",
   "start_date": "2024-06-01",
   "end_date": "2024-08-31",
-  "max_cloud_cover": 30
+  "max_cloud_cover": 20
 }
 ```
 
@@ -110,10 +110,10 @@ V1 中 planner 可以先是受约束的结构化输出，不追求完全自由 t
 典型场景：
 
 - AOI 查询失败：调整 `aoi_query`
-- coverage 不足：扩大时间范围、放宽云量或增加 scene limit
+- coverage 不足：优先扩大时间范围，必要时小幅放宽云量
 - diagnostics 标记不可重试：终止循环并返回明确原因
 
-循环次数由 `state.runtime` 中的 per-tool retry 计数控制。
+循环次数由 `state.runtime` 中的 per-tool retry 计数控制。当前 `raster_prepare` 最多重试 5 次。
 
 ## V1 完成标准
 

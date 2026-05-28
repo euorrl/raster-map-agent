@@ -39,7 +39,7 @@ warnings
 - `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
 - `tool_results`：各工具的原始返回结果，按工具名分区保存
 - `metadata`：最终记录和导出用的元数据分区
-- `runtime`：workflow 运行时控制信息，例如 retry 次数、validator 结果和局部 ReAct 状态
+- `runtime`：workflow 运行时控制信息，例如 retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态
 - `final_answer`：最终返回给用户的答案
 - `status`：当前 workflow 状态
 - `errors`：追加式错误列表
@@ -107,7 +107,17 @@ app/agent/
     raster_prepare_adjuster.py
 ```
 
-当前分支正在引入 agent 层验证和调整策略。长期目标是：
+当前分支已经引入 agent 层验证和调整策略。当前 `raster_prepare`
+的治理关系由 `policies.py` 注册：
+
+```text
+raster_prepare
+  validator: raster_prepare_validator
+  adjuster: raster_prepare_adjuster
+  max_retries: 5
+```
+
+长期目标是：
 
 ```text
 tool 执行 -> validator 检查 -> adjuster 调整参数 -> runtime 记录 retry -> 路由决定继续/重试/失败

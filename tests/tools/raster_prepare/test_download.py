@@ -371,7 +371,6 @@ def test_build_raster_scene_plan_detects_footprint_gap(monkeypatch, tmp_path):
     assert plan.diagnostics.suggested_actions == [
         "expand_date_range",
         "increase_max_cloud_cover",
-        "increase_limit",
     ]
 
 

@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-
 DEFAULT_ZHIPUAI_MODEL = "glm-4.7-flash"
 DEFAULT_ZHIPUAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 

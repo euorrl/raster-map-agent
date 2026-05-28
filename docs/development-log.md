@@ -153,9 +153,9 @@ data/<uuid>/output/<index>.tif
 data/<uuid>/output/<index>_preview.png
 ```
 
-## 阶段 10：Agent Validation Policy 骨架
+## 阶段 10：Agent Validation Policy
 
-当前分支开始把验证和调整逻辑从工具层剥离出来，放到 agent 层。
+当前分支把验证和调整逻辑从工具层剥离出来，放到 agent 层。
 
 新增结构：
 
@@ -164,6 +164,21 @@ app/agent/validators/
 app/agent/adjusters/
 app/agent/policies.py
 ```
+
+已完成：
+
+- `raster_prepare_validator`：检查 prepare 结果是否可继续、可重试或失败
+- `raster_prepare_adjuster`：调用智谱模型生成下一轮参数建议
+- `policies.py`：注册 tool、validator、adjuster 和最大重试次数
+- `state.runtime`：记录 validator 结果、adjuster 结果和 retry count
+- `prepare_raster_inputs`：scene coverage 不达标时在下载前短路返回 diagnostics
+
+当前约束：
+
+- `raster_prepare` 最多重试 5 次
+- adjuster 优先扩大日期范围，尤其优先提前 `start_date`
+- `max_cloud_cover` 默认 20，只能递增，单次最多增加 5，最大不超过 30
+- `scene_limit` 和 `max_selected_scenes` 是工具内部工程参数，不允许 adjuster 修改
 
 目标：
 

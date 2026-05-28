@@ -129,7 +129,7 @@ AOI GeoJSON geometry
 }
 ```
 
-这个错误不是扩大日期、放宽云量、增加 limit 能解决的，所以 ReAct 不应该继续调参。
+这个错误不是扩大日期或放宽云量能解决的，所以 ReAct 不应该继续调参。
 
 ## 方案四：全局 coverage-aware greedy
 
@@ -187,7 +187,7 @@ STAC features
 -> 过滤没有 geometry 的 scene
 ```
 
-`RasterSceneCandidateStore` 的作用是让多次查询可以累积候选 scene。后续局部 ReAct 扩大日期、放宽云量或增加 limit 时，可以继续把新查询结果合并到同一个 store，再重新生成 plan。
+`RasterSceneCandidateStore` 的作用是让多次查询可以累积候选 scene。后续局部 ReAct 扩大日期或放宽云量时，可以继续把新查询结果合并到同一个 store，再重新生成 plan。
 
 ### 已覆盖区域与未覆盖区域
 
@@ -296,7 +296,7 @@ while len(selected) < max_selected_scenes:
 当前关键参数：
 
 ```python
-max_cloud_cover = 30
+max_cloud_cover = 20
 limit = 100
 max_selected_scenes = 20
 contribution_tolerance = 0.95
@@ -306,7 +306,7 @@ min_coverage_ratio = 0.7
 
 含义：
 
-- `max_cloud_cover`: 候选 scene 允许的最大云量百分比
+- `max_cloud_cover`: 候选 scene 允许的最大云量百分比，V1 默认 20，ReAct 最多放宽到 30
 - `limit`: 单次 STAC 请求最多返回多少候选 scene
 - `max_selected_scenes`: 最终 plan 最多下载多少 scene
 - `contribution_tolerance`: 当新增贡献达到最佳贡献的 95% 时，认为贡献接近，可以用云量决定优先级
@@ -414,8 +414,7 @@ C 虽然云量最低，但贡献差太多，不会被选。
   "is_retriable": true,
   "suggested_actions": [
     "expand_date_range",
-    "increase_max_cloud_cover",
-    "increase_limit"
+    "increase_max_cloud_cover"
   ]
 }
 ```
@@ -493,6 +492,6 @@ scene 没有新增贡献，或达到 `max_selected_scenes`。
 - 对作品集 V1 来说，跑通完整本地流程比追求工业级完整覆盖更重要
 - 一些真实地区即使缺少边缘覆盖，仍然足以展示 NDVI 计算、mosaic、clip、render 流程
 - coverage_ratio 会被完整保留，后续 answer 可以向用户说明“当前影像覆盖率约为 xx%”
-- 如果低于阈值，diagnostics 仍然会建议扩大日期、放宽云量或增加 limit
+- 如果低于阈值，diagnostics 仍然会建议扩大日期或放宽云量
 
 这不是放弃质量控制，而是把 coverage 从绝对门槛改成可解释的质量指标。

@@ -95,7 +95,7 @@ RasterScenePlanRequest(
     boundary_geojson_path=Path("...geojson"),
     start_date="2024-06-01",
     end_date="2024-08-31",
-    max_cloud_cover=30,
+    max_cloud_cover=20,
     required_bands=["B04", "B08"],
     data_source="sentinel2",
 )
@@ -119,7 +119,11 @@ RasterScenePlanResult(
 - 先筛选云量和必要 asset
 - 逐步选择对 AOI 未覆盖部分贡献最大的 scene
 - 贡献接近时优先云量更低的 scene
-- 输出 coverage diagnostics，供后续 validator / ReAct 使用
+- 输出 coverage diagnostics，供 agent validator / adjuster 使用
+
+如果 scene plan 的 coverage 低于 `min_coverage_ratio`，`prepare_raster_inputs`
+会在下载前短路返回 diagnostics，不再执行 download、mosaic 和 clip。
+后续由 agent validator / adjuster 决定是否扩大日期或小幅放宽云量后重试。
 
 详细算法演进见 [Scene 选择算法迭代](scene-selection-evolution.md)。
 

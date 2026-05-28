@@ -234,7 +234,7 @@ class RasterPrepareRequest(BaseModel):
     index_name: str = "NDVI"
     start_date: str
     end_date: str
-    max_cloud_cover: float = Field(default=30, ge=0, le=100)
+    max_cloud_cover: float = Field(default=20, ge=0, le=30)
     workspace_dir: Path
     data_source: str = DEFAULT_RASTER_DATA_SOURCE
     aoi_limit: int = Field(default=5, ge=1, le=10)

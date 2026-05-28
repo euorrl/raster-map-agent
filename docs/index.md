@@ -52,7 +52,7 @@ errors
 warnings
 ```
 
-其中 `runtime` 是新增的运行时控制分区，用于后续保存 retry 次数、validator 结果和局部 ReAct 状态。
+其中 `runtime` 是运行时控制分区，用于保存 retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态。
 
 ### 工具层与 Agent 层分离
 
@@ -61,7 +61,16 @@ warnings
 - `tools/` 负责确定性的领域能力
 - `agent/` 负责计划、验证、调整、路由和恢复策略
 
-因此 `raster_prepare` 不直接内置 LLM ReAct。未来局部 ReAct 会优先放在 agent 层的 validator / adjuster / policy 中。
+因此 `raster_prepare` 不直接内置 LLM ReAct。当前局部 ReAct 的基础已经放在 agent 层：
+
+```text
+raster_prepare validator
+-> raster_prepare adjuster
+-> policy registry
+-> runtime retry count
+```
+
+validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，policy 负责限制最多重试 5 次。
 
 ## 主要文档
 
