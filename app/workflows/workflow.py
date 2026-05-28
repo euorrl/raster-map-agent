@@ -15,9 +15,9 @@ from app.schemas.state import AgentState
 def route_after_planning(state: AgentState) -> str:
     if state.status == "failed":
         return "failed"
-    if state.plan.get("response_mode") == "direct_answer":
+    if state.plan.get("route") == "direct_answer":
         return "direct_answer"
-    return "raster_workflow"
+    return "raster_product_generate"
 
 
 def route_after_raster_prepare_validation(state: AgentState) -> str:
@@ -44,7 +44,7 @@ def build_workflow():
         {
             "direct_answer": "answer",
             "failed": "answer",
-            "raster_workflow": "registry",
+            "raster_product_generate": "registry",
         },
     )
     workflow.add_edge("registry", "workspace")

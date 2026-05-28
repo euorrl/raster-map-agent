@@ -35,7 +35,7 @@ warnings
 字段含义：
 
 - `user_query`：用户原始输入
-- `plan`：结构化任务计划，例如 `response_mode`、AOI、指数、日期和云量
+- `plan`：结构化任务计划，例如 `route`、`answer_mode`、AOI、指数、日期和云量
 - `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
 - `tool_results`：各工具的原始返回结果，按工具名分区保存
 - `metadata`：最终记录、导出和回答生成用的元数据分区
@@ -116,11 +116,11 @@ app/agent/
     raster_prepare_adjuster.py
 ```
 
-全局 planner 负责把自然语言需求转换成受约束的 `state.plan`，并把工具调用顺序写入 `runtime.tool_plan`。
+全局 planner 负责把自然语言需求转换成受约束的 `state.plan`。工具调用顺序不由 planner 决定，后续由系统根据 `plan.route` 和 workflow template 编译。
 
 当前 planner 支持两种模式：
 
-- `raster_workflow`：正常执行栅格专题图 workflow
+- `raster_product_generate`：正常执行栅格专题图 workflow
 - `direct_answer`：与当前栅格 workflow 无关的问题，或请求未注册产品时，直接进入最终回答
 
 `raster_prepare` 的治理关系由 `tool_rules.py` 注册：
@@ -172,7 +172,7 @@ render_preview
 metadata export
 ```
 
-workflow 也已预留 `direct_answer` 路由：当 `state.plan.response_mode == "direct_answer"` 时，可以跳过栅格工具，直接进入 answer 节点。
+workflow 也已预留 `direct_answer` 路由：当 `state.plan.route == "direct_answer"` 时，可以跳过栅格工具，直接进入 answer 节点。
 
 ## 数据目录
 

@@ -109,7 +109,7 @@ Adjuster 负责有限参数修正
 当前约定：
 
 ```text
-planner -> 输出 response_mode + aoi_query + index_name + date range + max_cloud_cover
+planner -> 输出 route + answer_mode + aoi_query + index_name + date range + max_cloud_cover
 registry -> 展开 required_bands / band_roles / formula / render_config / STAC asset mapping
 raster_prepare -> 准备裁剪后的 band GeoTIFF
 index_calculation -> 根据 band_roles + formula 计算指数
@@ -132,13 +132,14 @@ planner 的输出分成两部分：
 
 ```text
 state.plan
-runtime.tool_plan.steps
+state.tool_calls
 ```
 
 `state.plan` 只保留需要 LLM 决策的核心业务参数：
 
 ```text
-response_mode
+route
+answer_mode
 aoi_query
 index_name
 start_date
@@ -146,11 +147,11 @@ end_date
 max_cloud_cover
 ```
 
-`runtime.tool_plan.steps` 保存 planner 给出的工具调用顺序和参数映射。当前 V1 只允许受支持的工具名，且会把每一步参数规范化，避免 LLM 把内部工程参数写乱。
+`state.tool_calls` 保存系统根据 route 和 workflow template 编译出的工具调用顺序和参数映射。planner 不直接生成工具链，避免 LLM 把内部工程参数写乱。
 
 planner 不会把 `data_source`、`need_render`、`include_colorbar`、`need_metadata`、`scene_limit`、`max_selected_scenes`、`workspace_dir` 写入 `state.plan`。这些固定策略和工程参数仍由 registry、tool schema 和 tool_rules 控制。
 
-## 为什么引入 response_mode
+## 为什么引入 route 和 answer_mode
 
 并不是所有用户输入都应该进入栅格工作流。例如：
 
@@ -165,10 +166,11 @@ planner 不会把 `data_source`、`need_render`、`include_colorbar`、`need_met
 因此 planner 增加：
 
 ```text
-response_mode = raster_workflow | direct_answer
+route = raster_product_generate | direct_answer
+answer_mode = metadata_summary | direct_answer
 ```
 
-- `raster_workflow`：用户请求可由当前注册表和工具链完成
+- `raster_product_generate`：用户请求可由当前注册表和工具链完成
 - `direct_answer`：普通问答、无关问题、系统能力询问、或当前未支持产品
 
 这样 final answer 节点可以选择：

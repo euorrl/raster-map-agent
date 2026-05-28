@@ -19,7 +19,7 @@ def generate_final_answer(
     request: FinalAnswerRequest,
     client: AnswerLLMClient | None = None,
 ) -> FinalAnswerResult:
-    """根据 answer mode 生成最终用户回答。"""
+    """根据 answer_mode 生成最终用户回答。"""
 
     logger.info("Generating final answer mode=%s", request.answer_mode)
 
@@ -79,8 +79,8 @@ def _call_zhipuai_chat(messages: list[dict[str, str]]) -> str:
 def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
     if request.answer_mode == "direct_answer":
         task_prompt = (
-            "用户问题与栅格地图 workflow 无关，或者当前系统暂不支持该产品。"
-            "请直接回答用户问题。若问题是在请求一个未注册的地图产品，"
+            "用户问题与栅格地图 workflow 无关，或当前系统暂不支持该产品。"
+            "请直接回答用户问题；如果用户在请求一个未注册的地图产品，"
             "请说明当前暂不支持，并尽量指出当前回答基于已有能力范围。"
             "\n\n"
             f"question:\n{request.question}"
@@ -92,8 +92,9 @@ def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
         }
         task_prompt = (
             "请根据 workflow metadata 生成最终用户回答。回答应简洁说明任务结果、"
-            "核心参数、主要输出文件和任何重要警告。不要编造 metadata 中不存在的文件、"
-            "指标或结论。如果 workflow metadata 显示失败或缺少结果，请清楚说明原因。"
+            "核心参数、主要输出文件和任何重要警告。不要编造 metadata 中不存在的"
+            "文件、指标或结论。如果 workflow metadata 显示失败或缺少结果，"
+            "请清楚说明原因。"
             "\n\n"
             f"context:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
         )

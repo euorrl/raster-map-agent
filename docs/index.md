@@ -69,14 +69,14 @@ warnings
 ```text
 zhipu global planner
 -> structured state.plan
--> runtime.tool_plan
+-> workflow template compiler
 -> raster_prepare validator
 -> raster_prepare adjuster
 -> tool rules registry
 -> runtime retry count
 ```
 
-planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。`state.plan` 只保留 response mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序写入 `runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，tool rules 负责限制最大重试 5 次。
+planner 负责把自然语言需求转换为受约束的结构化 plan。`state.plan` 只保留 route、answer_mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序后续由系统根据 route 和 workflow template 编译到 `state.tool_calls`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，tool rules 负责限制最大重试 5 次。
 
 ## 主要文档
 

@@ -204,16 +204,17 @@ app/agent/planners/
 职责：
 
 - 读取用户自然语言需求
-- 调用智谱模型生成结构化 plan 和 tool_calls
+- 调用智谱模型生成结构化 plan
 - `state.plan` 只允许保存 V1 workflow 需要 LLM 决策的核心字段
-- `tool_calls` 保存工具调用顺序和每一步参数映射
+- `tool_calls` 后续由系统根据 route 和 workflow template 编译
 - 不直接执行工具
 - 不生成自由 tool graph
 
 当前 planner 核心字段：
 
 ```text
-response_mode
+route
+answer_mode
 aoi_query
 index_name
 start_date
@@ -223,13 +224,14 @@ max_cloud_cover
 
 约束：
 
-- `response_mode` 为 `raster_workflow` 或 `direct_answer`
+- `route` 为 `raster_product_generate` 或 `direct_answer`
+- `answer_mode` 为 `metadata_summary` 或 `direct_answer`
 - `index_name` 必须来自 registry，例如 `NDVI` / `NDWI`
 - `max_cloud_cover` 初始值优先为 20，不得超过 30
 - `state.plan` 不保存 `data_source`、`need_render`、`include_colorbar`、`need_metadata`
 - 不允许把 `scene_limit`、`max_selected_scenes` 等工具内部工程参数写入 `state.plan`
 
-当前 `tool_calls` 支持的 V1 工具顺序包括：
+后续 compiler 会根据 `raster_product_generate` 模板编译 V1 工具顺序：
 
 ```text
 workspace.create_workspace

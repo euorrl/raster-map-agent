@@ -18,7 +18,8 @@ Agent 基础：
 - 动态 state 分区
 - `runtime` 运行时控制分区
 - 智谱全局 planner
-- `response_mode`：`raster_workflow` / `direct_answer`
+- `route`：`raster_product_generate` / `direct_answer`
+- `answer_mode`：`metadata_summary` / `direct_answer`
 - agent validator / adjuster / tool rules 注册表
 
 工具链：
@@ -98,13 +99,14 @@ planner
 Planner 负责把自然语言转成两部分：
 
 - `state.plan`：只保存 LLM 真正需要决策的业务参数
-- `tool_calls`：保存工具调用顺序和每一步参数映射
+- `tool_calls`：后续由系统根据 route 和 workflow template 编译出的工具调用顺序
 
 正常栅格任务示例：
 
 ```json
 {
-  "response_mode": "raster_workflow",
+  "route": "raster_product_generate",
+  "answer_mode": "metadata_summary",
   "aoi_query": "Chengdu, Sichuan, China",
   "index_name": "NDVI",
   "start_date": "2024-06-01",
@@ -117,11 +119,12 @@ Planner 负责把自然语言转成两部分：
 
 ```json
 {
-  "response_mode": "direct_answer"
+  "route": "direct_answer",
+  "answer_mode": "direct_answer"
 }
 ```
 
-`tool_calls` 当前是受约束的 V1 工具计划，例如：
+后续 compiler 会把 `raster_product_generate` 编译成 V1 工具计划，例如：
 
 ```text
 workspace.create_workspace
@@ -132,7 +135,7 @@ workspace.create_workspace
 -> answer.generate_final_answer
 ```
 
-V1 中 planner 可以先是受约束的结构化输出，不追求完全自由 tool planning。
+V1 中 planner 只负责受约束的结构化 plan，不追求完全自由 tool planning。
 
 ## 后续阶段：局部 ReAct
 

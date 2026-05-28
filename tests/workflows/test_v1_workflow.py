@@ -84,7 +84,7 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
 def test_route_after_planning_sends_direct_answer_to_answer_node():
     state = AgentState(
         user_query="What is remote sensing?",
-        plan={"response_mode": "direct_answer"},
+        plan={"route": "direct_answer", "answer_mode": "direct_answer"},
         status="planned",
     )
 
@@ -94,7 +94,7 @@ def test_route_after_planning_sends_direct_answer_to_answer_node():
 def test_answer_node_handles_direct_answer_mode():
     state = AgentState(
         user_query="What is remote sensing?",
-        plan={"response_mode": "direct_answer"},
+        plan={"route": "direct_answer", "answer_mode": "direct_answer"},
         status="planned",
     )
 

@@ -172,7 +172,7 @@ def product_generation_node(state: AgentState) -> dict[str, Any]:
 
 
 def answer_node(state: AgentState) -> dict[str, Any]:
-    if state.plan.get("response_mode") == "direct_answer":
+    if state.plan.get("answer_mode") == "direct_answer":
         return {
             "final_answer": f"Mock direct answer for: {state.user_query}",
             "status": "completed",
