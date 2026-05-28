@@ -5,16 +5,16 @@ from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, Field
 
-from app.agent.workflow_templates import (
+from app.registry import INDEX_REGISTRY
+from app.tools.answer.schemas import AnswerMode
+from app.utils import get_zhipuai_settings
+from app.workflows.templates import (
     DIRECT_ANSWER_ROUTE,
     RASTER_PRODUCT_GENERATE_ROUTE,
     WorkflowRoute,
     get_workflow_route_answer_modes,
     get_workflow_template_routes,
 )
-from app.registry import INDEX_REGISTRY
-from app.tools.answer.schemas import AnswerMode
-from app.utils import get_zhipuai_settings
 
 AgentPlanStatus = Literal["planned", "failed"]
 AgentRoute = WorkflowRoute

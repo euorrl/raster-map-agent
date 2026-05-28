@@ -11,11 +11,11 @@ DIRECT_ANSWER_ROUTE = "direct_answer"
 
 @dataclass(frozen=True)
 class WorkflowTemplate:
-    """受控 workflow 路线模板。
+    """Controlled workflow route template.
 
-    模板只声明某条 route 的工具序列和默认回答模式，不声明工具参数、
-    validator、adjuster 或 retry。工具参数由后续 compiler 根据 state 构造；
-    validator、adjuster 和 retry 由 tool_rules 决定。
+    The template only declares the tool sequence and default answer mode for a
+    route. Tool parameters are compiled later from state. Validator, adjuster,
+    and retry behavior are controlled by workflow tool rules.
     """
 
     route: WorkflowRoute
@@ -48,7 +48,7 @@ WORKFLOW_TEMPLATES: dict[WorkflowRoute, WorkflowTemplate] = {
 
 
 def get_workflow_template(route: str) -> WorkflowTemplate:
-    """根据 route 读取 workflow template。"""
+    """Return the workflow template registered for route."""
 
     try:
         return WORKFLOW_TEMPLATES[cast(WorkflowRoute, route)]
@@ -57,13 +57,13 @@ def get_workflow_template(route: str) -> WorkflowTemplate:
 
 
 def get_workflow_template_routes() -> list[str]:
-    """返回当前系统支持的 workflow route。"""
+    """Return supported workflow route names."""
 
     return sorted(WORKFLOW_TEMPLATES)
 
 
 def get_workflow_route_answer_modes() -> dict[WorkflowRoute, AnswerMode]:
-    """返回 route 与默认 answer_mode 的映射。"""
+    """Return the default answer mode for each workflow route."""
 
     return {
         route: template.answer_mode

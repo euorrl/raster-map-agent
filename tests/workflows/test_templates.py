@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.workflow_templates import (
+from app.workflows.templates import (
     DIRECT_ANSWER_ROUTE,
     RASTER_PRODUCT_GENERATE_ROUTE,
     WORKFLOW_TEMPLATES,

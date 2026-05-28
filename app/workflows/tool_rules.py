@@ -20,10 +20,11 @@ AdjustmentUpdateBuilder = Callable[[AgentState, Any], dict[str, Any]]
 
 @dataclass(frozen=True)
 class ToolRule:
-    """Agent 层工具后处理规则。
+    """Post-tool workflow rule.
 
-    ToolRule 不执行工具本身，只声明某个工具运行后是否需要 validator
-    验收、可恢复失败时是否允许 adjuster 调参，以及最多允许重试几次。
+    ToolRule does not execute the tool itself. It declares whether a tool result
+    needs validation, whether retryable failures can be adjusted, and how many
+    retries are allowed.
     """
 
     tool_name: str
@@ -48,7 +49,7 @@ TOOL_RULES: dict[str, ToolRule] = {
 
 
 def get_tool_rule(tool_name: str) -> ToolRule:
-    """根据工具结果名读取后处理规则。"""
+    """Return the post-tool workflow rule for a tool result name."""
 
     try:
         return TOOL_RULES[tool_name]
@@ -57,14 +58,14 @@ def get_tool_rule(tool_name: str) -> ToolRule:
 
 
 def get_tool_retry_count(state: AgentState, tool_name: str) -> int:
-    """读取某个工具已经重试的次数。"""
+    """Return how many retries have already run for a tool."""
 
     retry_counts = state.runtime.get("retry_counts", {})
     return int(retry_counts.get(tool_name, 0))
 
 
 def can_retry_tool(state: AgentState, tool_name: str) -> bool:
-    """判断某个工具当前是否还能进入 adjuster 重试。"""
+    """Return whether a tool can still enter adjust-and-retry flow."""
 
     rule = get_tool_rule(tool_name)
     validators = state.runtime.get("validators", {})
@@ -78,7 +79,7 @@ def can_retry_tool(state: AgentState, tool_name: str) -> bool:
 
 
 def build_retry_exhausted_update(state: AgentState, tool_name: str) -> dict[str, Any]:
-    """构造工具重试次数耗尽时的 state update。"""
+    """Build a state update for exhausted tool retries."""
 
     retry_count = get_tool_retry_count(state, tool_name)
     return {

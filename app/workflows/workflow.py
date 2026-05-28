@@ -1,9 +1,5 @@
 from langgraph.graph import END, START, StateGraph
 
-from app.agent.workflow_templates import (
-    DIRECT_ANSWER_ROUTE,
-    RASTER_PRODUCT_GENERATE_ROUTE,
-)
 from app.agent.nodes import (
     answer_node,
     planner_node,
@@ -14,6 +10,10 @@ from app.agent.nodes import (
     workspace_node,
 )
 from app.schemas.state import AgentState
+from app.workflows.templates import (
+    DIRECT_ANSWER_ROUTE,
+    RASTER_PRODUCT_GENERATE_ROUTE,
+)
 
 
 def route_after_planning(state: AgentState) -> str:
