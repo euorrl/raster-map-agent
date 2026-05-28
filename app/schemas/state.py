@@ -41,7 +41,6 @@ class AgentState(BaseModel):
         workspace: 当前任务的工作区信息，例如 run_id 和 workspace_dir。
         tool_results: 各工具的运行结果，按工具名分区保存，例如
             raster_prepare、index_calculation、render_preview。
-        metadata: 面向最终记录和导出的元数据，可由多个节点逐步补充。
         runtime: workflow 运行时控制信息，例如 retry 次数、当前阶段、
             validator 结果和局部 ReAct 状态。它不是最终产物 metadata。
         final_answer: 最终返回给用户的文本答案。
@@ -58,7 +57,6 @@ class AgentState(BaseModel):
 
     workspace: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
     tool_results: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
-    metadata: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
     runtime: Annotated[dict[str, Any], merge_dicts] = Field(default_factory=dict)
 
     final_answer: str | None = None

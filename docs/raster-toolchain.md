@@ -217,14 +217,14 @@ data/<uuid>/output/ndvi_preview.png
 
 ## Metadata Export
 
-`export_metadata` 将 workflow metadata 导出为 JSON。
+`export_metadata` 从 workflow state snapshot 中抽取精简产品信息，并导出为 JSON。
 
 输入：
 
 ```python
 MetadataExportRequest(
     workspace_dir=Path("data/<uuid>"),
-    metadata={...},
+    workflow_state={...},
 )
 ```
 
@@ -234,15 +234,56 @@ MetadataExportRequest(
 data/<uuid>/output/metadata.json
 ```
 
-JSON 顶层包含：
+JSON 顶层就是面向用户的产品信息对象，不再包含 `schema_version`、
+`exported_at` 或外层 `product_info`：
 
 ```json
 {
-  "schema_version": "1.0",
-  "exported_at": "...",
-  "metadata": {}
+  "product": {},
+  "area": {},
+  "time_range": {},
+  "source": {},
+  "spatial": {},
+  "quality": {}
 }
 ```
+
+metadata 只保留用户需要理解产品的关键信息，例如产品类型、产品名称、AOI、日期范围、云量、数据来源、提供方、CRS、分辨率和质量诊断。它不会原样导出完整 `AgentState`，也不会输出 GeoJSON、GeoTIFF、PNG 等文件路径。
+
+metadata 的字段来源遵循：
+
+- `plan`：用户任务相关字段，例如 AOI、日期范围、云量阈值
+- `tool_results`：真实工具输出，例如 `raster_prepare`、`index_calculation`、`render_preview`
+- `runtime.registry`：注册表解析结果，只作为产品和数据源配置补充
+
+`source` 使用通用结构，只保留：
+
+```json
+{
+  "data_source": "sentinel2",
+  "provider": "earth_search"
+}
+```
+
+`satellite`、`collection` 等数据源特有字段不进入用户侧 metadata。
+
+`spatial.crs`、`spatial.resolution`、`spatial.bounds`、`spatial.width` 和 `spatial.height` 优先从最终产品 GeoTIFF 读取；如果最终产品 GeoTIFF 不存在，则尝试读取 `raster_prepare.band_paths` 中的裁剪波段。不会再用数据源默认值伪造 CRS 或分辨率。
+
+其中 `product` 是通用结构，不再使用指数专属字段：
+
+```json
+{
+  "type": "index",
+  "name": "NDVI",
+  "family": "raster",
+  "method": {
+    "name": "index_formula",
+    "formula": "(nir - red) / (nir + red)"
+  }
+}
+```
+
+对于 `landtype`、人口、夜光等非指数产品，`method.formula` 会被省略，避免把 `index_formula` 写进不适用的产品信息。
 
 当前 workflow 节点中 metadata export 仍在 `product_generation_node` 内显式调用；后续 executor 落地后会通过 `metadata.export_metadata` tool call 统一执行。
 

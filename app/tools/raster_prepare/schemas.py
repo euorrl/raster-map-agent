@@ -278,6 +278,8 @@ class RasterPrepareResult(BaseModel):
     boundary_geojson_path: str
     index_name: str
     data_source: str
+    provider: str | None = None
+    collection: str | None = None
     required_bands: list[str]
     band_roles: dict[str, str]
     index_formula: str

@@ -42,7 +42,7 @@ def test_build_agent_plan_with_fake_client():
     assert result.rationale == "User asks for an NDVI map of Chengdu."
     assert update["status"] == "planned"
     assert update["plan"]["index_name"] == "NDVI"
-    assert update["metadata"]["plan"]["aoi_query"] == "Chengdu, Sichuan, China"
+    assert "metadata" not in update
     assert update["runtime"]["planners"]["global"]["status"] == "planned"
     assert "tool_calls" not in update
     assert "tool_plan" not in update["runtime"]

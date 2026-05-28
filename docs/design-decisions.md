@@ -106,7 +106,6 @@ Planner 只写：
 
 ```text
 state.plan
-state.metadata["plan"]
 state.runtime["planners"]["global"]
 ```
 
@@ -157,15 +156,21 @@ retry
 state.runtime["registry"]["raster_product"]
 ```
 
-用于保存当前节点执行需要的 registry 解析结果。同时也写入：
-
-```python
-state.metadata["registry"]
-```
-
-用于最终记录和回答生成。
+用于保存当前节点执行需要的 registry 解析结果。
 
 当 compiler 实现后，这部分配置会被编译进 `tool_calls.params`。
+
+metadata tool 不依赖 state 中的 metadata 分区。它接收 state snapshot，
+从 `plan`、`runtime` 和 `tool_results` 中抽取精简产品信息，JSON 顶层直接保存
+产品信息对象，只保留用户
+理解产品所需的信息，例如产品类型、产品名称、AOI、日期、云量、数据来源、提供方、分辨率、
+CRS 和质量诊断。`product` 使用通用结构，指数公式只作为
+`product.method.formula` 的可选信息出现，`landtype` 等非指数产品不会携带
+`index_formula`。空间信息优先从真实产品 GeoTIFF 读取；如果最终产品栅格不存在，
+才尝试读取 `raster_prepare.band_paths` 中的裁剪波段。metadata 不再使用数据源默认值
+伪造 CRS 或分辨率。`source` 也保持通用，只输出 `data_source` 和 `provider`，
+不把 `satellite`、`collection` 等数据源特有字段固定进用户侧 metadata。用户侧
+metadata 也不输出 GeoJSON、GeoTIFF、PNG 等文件路径。
 
 ## Registry 负责知识，Tools 负责执行
 

@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +12,7 @@ from app.tools.index_calculation import (
     IndexCalculationRequest,
     calculate_raster_index,
 )
+from app.tools.metadata import MetadataExportRequest, export_metadata
 from app.tools.raster_prepare import RasterPrepareRequest, prepare_raster_inputs
 from app.tools.render_preview import RenderPreviewRequest, render_index_preview
 from app.tools.workspace import WorkspaceRequest, create_workspace
@@ -35,10 +35,11 @@ def registry_node(state: AgentState) -> dict[str, Any]:
         "band_roles": product_config.band_roles,
         "index_formula": product_config.index_formula,
         "render_config": product_config.render_config.model_dump(mode="json"),
+        "provider": product_config.provider,
+        "collection": product_config.collection,
     }
     return {
         "runtime": {"registry": {"raster_product": registry_result}},
-        "metadata": {"registry": registry_result},
     }
 
 
@@ -54,7 +55,6 @@ def workspace_node(state: AgentState) -> dict[str, Any]:
     workspace_result = result.model_dump(mode="json")
     return {
         "workspace": workspace_result,
-        "metadata": {"workspace": workspace_result},
     }
 
 
@@ -85,7 +85,6 @@ def raster_prepare_node(state: AgentState) -> dict[str, Any]:
     raster_prepare_result = result.model_dump(mode="json")
     return {
         "tool_results": {"raster_prepare": raster_prepare_result},
-        "metadata": {"raster_prepare": raster_prepare_result},
     }
 
 
@@ -123,19 +122,9 @@ def product_generation_node(state: AgentState) -> dict[str, Any]:
 
     index_result = index_result_model.model_dump(mode="json")
     preview_result = preview_result_model.model_dump(mode="json")
-    metadata_result = _export_metadata(
-        workspace_dir=Path(workspace_dir),
-        state=state,
-        index_result=index_result,
-        preview_result=preview_result,
-    )
+    metadata_result = _export_metadata(state, index_result, preview_result)
     return {
         "tool_results": {
-            "index_calculation": index_result,
-            "render_preview": preview_result,
-            "metadata_export": metadata_result,
-        },
-        "metadata": {
             "index_calculation": index_result,
             "render_preview": preview_result,
             "metadata_export": metadata_result,
@@ -168,27 +157,24 @@ def answer_node(state: AgentState) -> dict[str, Any]:
 
 
 def _export_metadata(
-    workspace_dir: Path,
     state: AgentState,
     index_result: dict[str, Any],
     preview_result: dict[str, Any],
-) -> dict[str, str]:
-    output_dir = workspace_dir / "output"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    metadata_path = output_dir / "metadata.json"
-    metadata = {
-        "plan": state.plan,
-        "workspace": state.workspace,
-        "raster_prepare": state.tool_results.get("raster_prepare", {}),
+) -> dict[str, Any]:
+    workspace_dir = Path(state.workspace["workspace_dir"])
+    state_snapshot = state.model_dump(mode="json")
+    state_snapshot["tool_results"] = {
+        **state_snapshot.get("tool_results", {}),
         "index_calculation": index_result,
         "render_preview": preview_result,
-        "warnings": state.warnings,
     }
-    metadata_path.write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    result = export_metadata(
+        MetadataExportRequest(
+            workspace_dir=workspace_dir,
+            workflow_state=state_snapshot,
+        )
     )
-    return {"metadata_path": str(metadata_path)}
+    return result.model_dump(mode="json")
 
 
 def _get_registry_raster_product(state: AgentState) -> dict[str, Any]:
@@ -196,9 +182,6 @@ def _get_registry_raster_product(state: AgentState) -> dict[str, Any]:
     raster_product = {}
     if isinstance(registry, dict):
         raster_product = registry.get("raster_product", {})
-
-    if not raster_product:
-        raster_product = state.metadata.get("registry", {})
 
     if isinstance(raster_product, dict):
         return raster_product

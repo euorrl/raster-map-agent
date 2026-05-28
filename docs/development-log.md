@@ -49,7 +49,6 @@ plan
 tool_calls
 workspace
 tool_results
-metadata
 runtime
 final_answer
 status
@@ -237,9 +236,14 @@ app/tools/metadata/
 
 职责：
 
-- 将 workflow metadata 导出为 JSON
+- 从 workflow state snapshot 抽取精简产品信息并导出为 JSON
 - 默认输出到 `workspace_dir/output/metadata.json`
-- JSON 包含 `schema_version`、`exported_at` 和 `metadata`
+- JSON 顶层直接保存产品信息对象，不再包含 `schema_version`、`exported_at` 或外层 `product_info`
+- metadata 包含通用产品类型、产品名称、AOI、日期、云量、数据来源、提供方、分辨率、CRS 和质量诊断
+- `source` 只保留通用 `data_source` 和 `provider`，不输出 `satellite`、`collection` 等数据源特有字段
+- 指数公式只作为 `product.method.formula` 的可选信息出现，非指数产品不会写入 `index_formula`
+- CRS、分辨率、bounds、宽高优先从真实产品 GeoTIFF 读取，不再用数据源默认值伪造空间信息
+- metadata 不输出 GeoJSON、GeoTIFF、PNG 等文件路径
 - 支持序列化 `Path`、Pydantic model、`set`
 
 它是确定性工具，不依赖 LLM。
@@ -279,7 +283,9 @@ app/tools/answer/
 - `tool_rules.py` 移入 `app/workflows/tool_rules.py`
 - `planner_node` 接入真实 planner
 - `registry_node` 不再把 registry 解析结果写回 `plan`
-- registry 解析结果写入 `runtime["registry"]["raster_product"]` 和 `metadata["registry"]`
+- registry 解析结果写入 `runtime["registry"]["raster_product"]`
+- state 不再保留 `metadata` 分区
+- metadata tool 根据 state snapshot 导出精简产品信息对象
 - `raster_prepare_validator_node` 调用正式 validator
 - `raster_prepare_validated` 作为统一通过状态
 - 删除 `AgentState.resolved`

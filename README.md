@@ -66,7 +66,6 @@ app/agent/planners/zhipu_planner.py
 它只写入：
 
 - `state.plan`
-- `state.metadata["plan"]`
 - `state.runtime["planners"]["global"]`
 
 正常栅格产品任务示例：

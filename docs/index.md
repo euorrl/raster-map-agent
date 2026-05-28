@@ -33,7 +33,6 @@ plan
 tool_calls
 workspace
 tool_results
-metadata
 runtime
 final_answer
 status
@@ -46,9 +45,11 @@ warnings
 - `plan`：planner 生成的用户任务意图
 - `tool_calls`：后续 compiler 生成的带参数工具调用计划
 - `runtime`：运行时控制信息，例如 planner 结果、registry 解析结果、validator/adjuster 结果、retry count
-- `metadata`：面向最终记录、导出和回答生成的元数据
 
 项目不再保留单独的 `resolved` state 分区。当前 registry 解析结果暂存在 `runtime["registry"]["raster_product"]`，后续 compiler 落地后会直接编译进 `tool_calls.params`。
+
+Metadata 导出不依赖 state 中的 metadata 分区。`metadata.export_metadata`
+接收 state snapshot，并抽取精简产品信息对象，用于最终回答和用户查看。
 
 ### Planner
 

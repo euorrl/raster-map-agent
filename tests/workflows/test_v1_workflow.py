@@ -98,8 +98,13 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
     assert state.tool_results["index_calculation"]["index_tif_path"]
     assert state.tool_results["render_preview"]["preview_path"]
     assert state.tool_results["metadata_export"]["metadata_path"]
+    product = state.tool_results["metadata_export"]["product_info"]["product"]
+    assert product["type"] == "index"
+    assert product["name"] == "NDVI"
     assert state.final_answer
-    assert Path(state.tool_results["metadata_export"]["metadata_path"]).exists()
+    metadata_path = Path(state.tool_results["metadata_export"]["metadata_path"])
+    assert metadata_path.exists()
+    assert '"product"' in metadata_path.read_text(encoding="utf-8")
 
 
 def test_route_after_planning_sends_direct_answer_to_answer_node():

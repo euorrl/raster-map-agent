@@ -70,6 +70,8 @@ final answer text
 - `runtime["registry"]["raster_product"]` 保存过渡期执行配置
 - `product_generation_node` 串联 index、preview、metadata
 - `direct_answer` 路由可跳过栅格工具
+- state 不再保留 `metadata` 分区
+- metadata tool 从 state snapshot 生成精简产品信息对象
 
 当前过渡状态：
 

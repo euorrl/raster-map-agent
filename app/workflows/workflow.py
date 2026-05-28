@@ -102,7 +102,6 @@ def _apply_update(state: AgentState, update: dict) -> AgentState:
             "plan",
             "workspace",
             "tool_results",
-            "metadata",
             "runtime",
         }:
             data[key] = merge_dicts(data.get(key, {}), value)

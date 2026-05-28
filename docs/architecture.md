@@ -35,7 +35,6 @@ plan
 tool_calls
 workspace
 tool_results
-metadata
 runtime
 final_answer
 status
@@ -50,14 +49,13 @@ warnings
 - `tool_calls`：后续 compiler 生成的工具调用计划
 - `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
 - `tool_results`：各工具的原始返回结果，按工具名分区保存
-- `metadata`：最终记录、导出和回答生成使用的元数据
 - `runtime`：workflow 运行时控制信息
 - `final_answer`：最终返回给用户的文本答案
 - `status`：当前 workflow 状态
 - `errors`：追加式错误列表
 - `warnings`：追加式警告列表
 
-`plan`、`workspace`、`tool_results`、`metadata`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 或 fallback runner 会把它合并进已有 state。
+`plan`、`workspace`、`tool_results`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 或 fallback runner 会把它合并进已有 state。当前 state 不包含 `metadata` 分区，避免把完整中间状态混入最终产品说明。
 
 当前没有单独的 `resolved` 字段。registry 解析结果在过渡期写入：
 
@@ -112,7 +110,7 @@ app/tools/answer/
 - `raster_prepare`：AOI 解析、scene plan、下载、mosaic、clip，输出裁剪后的 band GeoTIFF
 - `index_calculation`：根据 band roles 和 formula 计算指数 GeoTIFF
 - `render_preview`：根据 registry 渲染配置生成 PNG 预览图
-- `metadata`：将 workflow metadata 导出为 `output/metadata.json`
+- `metadata`：从 state snapshot 抽取用户关心的产品信息，导出为 `output/metadata.json`
 - `answer`：通过 LLM 生成最终回答，支持 `metadata_summary` 和 `direct_answer`
 
 部分 GIS 工具依赖 `rasterio`。包入口采用懒加载，避免仅导入 workflow 或 schema 时强制要求完整 GIS 依赖。

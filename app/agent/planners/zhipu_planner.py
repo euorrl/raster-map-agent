@@ -101,7 +101,6 @@ def build_agent_plan_update(result: AgentPlanResult) -> dict[str, Any]:
 
     if result.status == "planned":
         update["plan"] = result.plan
-        update["metadata"] = {"plan": result.plan}
         update["status"] = "planned"
         if result.warnings:
             update["warnings"] = result.warnings

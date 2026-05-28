@@ -130,11 +130,7 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 def _get_registry_raster_product(state: AgentState) -> dict[str, Any]:
     registry = _as_dict(state.runtime.get("registry"))
-    raster_product = _as_dict(registry.get("raster_product"))
-    if raster_product:
-        return raster_product
-
-    return _as_dict(state.metadata.get("registry"))
+    return _as_dict(registry.get("raster_product"))
 
 
 def _failed(reasons: list[str]) -> RasterPrepareValidationResult:
