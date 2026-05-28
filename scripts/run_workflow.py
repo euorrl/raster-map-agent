@@ -12,7 +12,7 @@ from app.workflows.workflow import run_workflow  # noqa: E402
 def main() -> None:
     configure_logging("INFO")
 
-    user_query = "Generate an NDVI vegetation map for Chengdu."
+    user_query = "中国的NDVI分布如何"
     state = run_workflow(user_query)
 
     print("status:", state.status)

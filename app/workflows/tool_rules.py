@@ -78,6 +78,11 @@ def can_retry_tool(state: AgentState, tool_call_id: str) -> bool:
     return get_tool_retry_count(state, tool_call_id) < rule.max_retries
 
 
+def has_tool_rule(tool_call_id: str | None) -> bool:
+    """判断给定 tool_call_id 是否存在工具后处理规则。"""
+    return bool(tool_call_id) and tool_call_id in TOOL_RULES_BY_CALL_ID
+
+
 def build_retry_exhausted_update(
     state: AgentState,
     tool_call_id: str,

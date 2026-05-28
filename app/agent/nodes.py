@@ -1,30 +1,64 @@
-from pathlib import Path
 from typing import Any
 
 from app.agent.planners import build_agent_plan, build_agent_plan_update
-from app.agent.validators import (
-    build_raster_prepare_validation_update,
-    validate_raster_prepare_result,
-)
 from app.registry import resolve_raster_product_config
 from app.schemas import AgentState
-from app.tools.index_calculation import (
-    IndexCalculationRequest,
-    calculate_raster_index,
-)
-from app.tools.metadata import MetadataExportRequest, export_metadata
-from app.tools.raster_prepare import RasterPrepareRequest, prepare_raster_inputs
-from app.tools.render_preview import RenderPreviewRequest, render_index_preview
-from app.tools.workspace import WorkspaceRequest, create_workspace
 from app.workflows.compiler import build_tool_calls_update
+from app.workflows.executor import execute_current_tool_call
+from app.workflows.tool_rules import (
+    build_retry_exhausted_update,
+    can_retry_tool,
+    get_tool_rule,
+    has_tool_rule,
+)
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
+    """根据用户输入生成受控 workflow plan。"""
     result = build_agent_plan(state.user_query)
     return build_agent_plan_update(result)
 
 
+def registry_node(state: AgentState) -> dict[str, Any]:
+    """解析栅格产品配置，并写入 runtime.registry。
+
+    该节点只负责把 plan 中的指数名称和数据源解析成稳定的产品配置，
+    例如 required_bands、band_roles、index_formula、render_config 等。
+
+    注意：
+    - 该节点不写 metadata。
+    - 最终 metadata 由 metadata.export_metadata tool 统一生成。
+    """
+    try:
+        product_config = resolve_raster_product_config(
+            state.plan.get("index_name", "NDVI"),
+            state.plan.get("data_source", "sentinel2"),
+        )
+    except Exception as error:
+        return {
+            "errors": [f"Raster product registry resolution failed: {error}"],
+            "status": "failed",
+        }
+
+    return {
+        "runtime": {
+            "registry": {
+                "raster_product": product_config.model_dump(mode="json"),
+            }
+        }
+    }
+
+
 def compiler_node(state: AgentState) -> dict[str, Any]:
+    """将 plan 和 registry 上下文编译成线性的 tool_calls。
+
+    compiler 只负责编译工具调用列表，不执行任何工具。
+
+    典型输出包括：
+    - state.tool_calls
+    - runtime.current_tool_index
+    - runtime.compiler
+    """
     try:
         return build_tool_calls_update(state)
     except Exception as error:
@@ -34,167 +68,171 @@ def compiler_node(state: AgentState) -> dict[str, Any]:
         }
 
 
-def registry_node(state: AgentState) -> dict[str, Any]:
-    product_config = resolve_raster_product_config(
-        state.plan.get("index_name", "NDVI"),
-        state.plan.get("data_source", "sentinel2"),
-    )
-    registry_result = {
-        "index_name": product_config.index_name,
-        "data_source": product_config.data_source,
-        "required_bands": product_config.required_bands,
-        "band_roles": product_config.band_roles,
-        "index_formula": product_config.index_formula,
-        "render_config": product_config.render_config.model_dump(mode="json"),
-        "provider": product_config.provider,
-        "collection": product_config.collection,
-    }
-    return {
-        "runtime": {"registry": {"raster_product": registry_result}},
-    }
+def has_next_tool_call(state: AgentState) -> bool:
+    """判断当前是否还有待执行的 tool_call。
 
-
-def workspace_node(state: AgentState) -> dict[str, Any]:
+    runtime.current_tool_index 指向下一次 executor 应该执行的 tool_call。
+    如果 current_tool_index 小于 tool_calls 长度，说明还有工具需要继续执行。
+    """
     try:
-        result = create_workspace(WorkspaceRequest())
+        current_index = int(state.runtime.get("current_tool_index", 0))
+    except (TypeError, ValueError):
+        return False
+
+    if not isinstance(state.tool_calls, list):
+        return False
+
+    return current_index < len(state.tool_calls)
+
+
+def tool_executor_node(state: AgentState) -> dict[str, Any]:
+    """单步执行当前 tool_call。
+
+    该节点只执行 runtime.current_tool_index 指向的一个 tool_call。
+
+    注意：
+    - 不会一次性执行完整 tool_calls 列表。
+    - 不负责调用 validator。
+    - 不负责调用 adjuster。
+    - 不直接从 plan 拼工具参数。
+    - 具体参数来自 tool_call.params。
+    - tool_call.params 中的 $state.xxx 引用由 executor 解析。
+    """
+    try:
+        next_state = execute_current_tool_call(state)
     except Exception as error:
         return {
-            "errors": [f"Workspace creation failed: {error}"],
+            "errors": [f"Tool execution failed: {error}"],
             "status": "failed",
         }
 
-    workspace_result = result.model_dump(mode="json")
-    return {
-        "workspace": workspace_result,
-    }
+    return next_state.model_dump(mode="json")
 
 
-def raster_prepare_node(state: AgentState) -> dict[str, Any]:
-    workspace_dir = state.workspace.get("workspace_dir")
-    if not workspace_dir:
-        return {"errors": ["Workspace is missing."], "status": "failed"}
+def tool_validator_node(state: AgentState) -> dict[str, Any]:
+    """验证刚刚执行完成的 tool_call。
 
-    raster_product = _get_registry_raster_product(state)
-    try:
-        result = prepare_raster_inputs(
-            RasterPrepareRequest(
-                aoi_query=state.plan["aoi_query"],
-                index_name=state.plan["index_name"],
-                data_source=raster_product["data_source"],
-                start_date=state.plan["start_date"],
-                end_date=state.plan["end_date"],
-                max_cloud_cover=state.plan.get("max_cloud_cover", 30),
-                workspace_dir=Path(workspace_dir),
-            )
-        )
-    except Exception as error:
+    该节点通过 runtime.last_tool_call_id 找到上一个执行完成的 tool_call，
+    然后根据 tool_rules 分发到对应 validator。
+
+    注意：
+    - tool_rules 使用的是 tool_call.id，也就是短 id，例如 raster_prepare。
+    - 不使用 tool_call.tool_name，例如 raster_prepare.prepare_raster_inputs。
+    - validator 只负责判断结果是否 passed / retryable / failed。
+    - validator 不修改 tool_call 参数。
+    - validator 不执行工具。
+    - validator 不写 metadata。
+    """
+    last_tool_call_id = _get_last_tool_call_id(state)
+    if not has_tool_rule(last_tool_call_id):
         return {
-            "errors": [f"Raster prepare failed: {error}"],
+            "errors": ["Missing or unsupported tool rule for last tool call."],
             "status": "failed",
         }
 
-    raster_prepare_result = result.model_dump(mode="json")
-    return {
-        "tool_results": {"raster_prepare": raster_prepare_result},
-    }
-
-
-def raster_prepare_validator_node(state: AgentState) -> dict[str, Any]:
-    result = validate_raster_prepare_result(state)
-    return build_raster_prepare_validation_update(result)
-
-
-def product_generation_node(state: AgentState) -> dict[str, Any]:
-    workspace_dir = state.workspace.get("workspace_dir")
-    if not workspace_dir:
-        return {"errors": ["Workspace is missing."], "status": "failed"}
-
-    raster_product = _get_registry_raster_product(state)
+    rule = get_tool_rule(last_tool_call_id)
     try:
-        index_result_model = calculate_raster_index(
-            IndexCalculationRequest(
-                workspace_dir=Path(workspace_dir),
-                index_name=raster_product["index_name"],
-                band_roles=raster_product["band_roles"],
-                index_formula=raster_product["index_formula"],
-            )
-        )
-        preview_result_model = render_index_preview(
-            RenderPreviewRequest(
-                index_name=state.plan["index_name"],
-                index_tif_path=Path(index_result_model.index_tif_path),
-            )
-        )
+        validation_result = rule.validator(state)
+        return rule.validation_update_builder(validation_result)
     except Exception as error:
         return {
-            "errors": [f"Product generation failed: {error}"],
+            "errors": [
+                f"Tool validation failed for {last_tool_call_id}: {error}",
+            ],
             "status": "failed",
         }
 
-    index_result = index_result_model.model_dump(mode="json")
-    preview_result = preview_result_model.model_dump(mode="json")
-    metadata_result = _export_metadata(state, index_result, preview_result)
-    return {
-        "tool_results": {
-            "index_calculation": index_result,
-            "render_preview": preview_result,
-            "metadata_export": metadata_result,
-        },
-        "status": "product_generated",
-    }
+
+def tool_adjuster_node(state: AgentState) -> dict[str, Any]:
+    """对 retryable 的 tool_call 执行参数调整。
+
+    该节点通过 runtime.last_tool_call_id 找到刚刚验证失败但可调整的 tool_call，
+    然后根据 tool_rules 分发到对应 adjuster。
+
+    adjuster 的职责是：
+    - 修改 tool_calls[last_tool_index].params。
+    - 追加 runtime.adjustments。
+    - 更新 runtime.retry_counts。
+    - 将 runtime.current_tool_index 拉回 last_tool_index。
+    - 让下一轮 executor 重新执行被调整过的 tool_call。
+
+    注意：
+    - adjuster 不修改 state.plan。
+    - adjuster 不写 metadata。
+    - adjuster 不执行工具。
+    """
+    last_tool_call_id = _get_last_tool_call_id(state)
+    if not has_tool_rule(last_tool_call_id):
+        return {
+            "errors": ["Missing or unsupported tool rule for last tool call."],
+            "status": "failed",
+        }
+
+    if not can_retry_tool(state, last_tool_call_id):
+        return build_retry_exhausted_update(state, last_tool_call_id)
+
+    rule = get_tool_rule(last_tool_call_id)
+    try:
+        adjustment_result = rule.adjuster(state)
+        return rule.adjustment_update_builder(state, adjustment_result)
+    except Exception as error:
+        return {
+            "errors": [
+                f"Tool adjustment failed for {last_tool_call_id}: {error}",
+            ],
+            "status": "failed",
+        }
 
 
 def answer_node(state: AgentState) -> dict[str, Any]:
-    if state.plan.get("answer_mode") == "direct_answer":
+    """workflow 兜底终止节点。
+
+    在新的 tool-call workflow 中，正常情况下最终回答由
+    answer.generate_final_answer tool 生成。
+
+    也就是说，answer tool 会作为最后一个 tool_call 被 executor 执行，
+    并写入 state.final_answer。
+
+    该节点只负责兜底：
+    - 如果 final_answer 已存在，直接结束。
+    - 如果 workflow 已失败，生成简单失败回答。
+    - 如果没有 final_answer 但 workflow 未失败，生成简单兜底回答。
+    """
+    if state.final_answer is not None:
         return {
-            "final_answer": f"Mock direct answer for: {state.user_query}",
-            "status": "completed",
+            "final_answer": state.final_answer,
+            "status": state.status or "completed",
         }
 
     if state.status == "failed":
         error_text = "; ".join(state.errors) or "Unknown workflow error."
         return {
-            "final_answer": f"Mock workflow failed: {error_text}",
+            "final_answer": f"Workflow failed: {error_text}",
             "status": "failed",
+        }
+
+    if state.plan.get("answer_mode") == "direct_answer":
+        return {
+            "final_answer": (
+                f"Unable to generate a direct answer for: {state.user_query}"
+            ),
+            "status": "completed",
         }
 
     return {
         "final_answer": (
-            f"{state.plan.get('index_name')} map generated for "
-            f"{state.plan.get('aoi_query')}."
+            f"Workflow completed for {state.plan.get('index_name')} "
+            f"over {state.plan.get('aoi_query')}, "
+            "but no final answer was generated."
         ),
         "status": "completed",
     }
 
 
-def _export_metadata(
-    state: AgentState,
-    index_result: dict[str, Any],
-    preview_result: dict[str, Any],
-) -> dict[str, Any]:
-    workspace_dir = Path(state.workspace["workspace_dir"])
-    state_snapshot = state.model_dump(mode="json")
-    state_snapshot["tool_results"] = {
-        **state_snapshot.get("tool_results", {}),
-        "index_calculation": index_result,
-        "render_preview": preview_result,
-    }
-    result = export_metadata(
-        MetadataExportRequest(
-            workspace_dir=workspace_dir,
-            workflow_state=state_snapshot,
-        )
-    )
-    return result.model_dump(mode="json")
+def _get_last_tool_call_id(state: AgentState) -> str | None:
+    """读取最近一次执行完成的 tool_call 短 id。"""
+    value = state.runtime.get("last_tool_call_id")
+    if isinstance(value, str) and value.strip():
+        return value
 
-
-def _get_registry_raster_product(state: AgentState) -> dict[str, Any]:
-    registry = state.runtime.get("registry", {})
-    raster_product = {}
-    if isinstance(registry, dict):
-        raster_product = registry.get("raster_product", {})
-
-    if isinstance(raster_product, dict):
-        return raster_product
-
-    return {}
+    return None
