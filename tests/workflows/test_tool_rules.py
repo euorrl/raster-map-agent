@@ -14,7 +14,7 @@ from app.workflows.tool_rules import (
 def test_get_tool_rule_returns_raster_prepare_rule():
     rule = get_tool_rule("raster_prepare")
 
-    assert rule.tool_name == "raster_prepare"
+    assert rule.tool_call_id == "raster_prepare"
     assert rule.validator is validate_raster_prepare_result
     assert rule.adjuster is adjust_raster_prepare_plan
     assert rule.max_retries == 5

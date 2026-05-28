@@ -152,6 +152,7 @@ Planner 不输出工具调用顺序，不生成 `tool_calls`，不决定 validat
 ```text
 app/workflows/
   compiler.py
+  executor.py
   workflow.py
   templates.py
   tool_rules.py
@@ -161,6 +162,7 @@ app/workflows/
 
 - `templates.py`：route 到工具序列骨架的注册表
 - `compiler.py`：根据 `plan + registry + workflow template` 生成 `tool_calls`
+- `executor.py`：解析 `$state...` 引用，按顺序执行 `tool_calls` 并写回 state
 - `tool_rules.py`：工具结果后处理规则，包含 validator、adjuster、最大 retry 次数
 - `workflow.py`：当前 V1 workflow graph；缺少 LangGraph 时提供线性 fallback runner
 
@@ -183,7 +185,8 @@ answer.generate_final_answer
 ```
 
 当前 `workflow.py` 仍以节点方式显式执行真实工具，但已经在 planner/registry 后
-编译 `state.tool_calls`。executor 尚未实现。
+编译 `state.tool_calls`。executor 已可独立执行 `tool_calls`，后续会把主 workflow
+逐步收敛到 executor 驱动。
 
 当前节点流程：
 

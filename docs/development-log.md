@@ -307,7 +307,6 @@ planner
 
 当前仍未完成：
 
-- executor：解析并执行 `tool_calls`
 - retry/adjuster 接入完整 graph 路由
 
 ## 阶段 15：Tool Call Compiler
@@ -327,5 +326,24 @@ app/workflows/compiler.py
 - 已知的 plan / registry 参数会固化到 `params`
 - 尚未产生的 workspace、tool result 和完整 state 使用 `$state...` 引用保留
 
-当前 executor 尚未实现，所以 `workflow.py` 仍用显式节点执行真实工具；`tool_calls`
-先作为可检查、可测试的执行计划进入 state。
+## 阶段 16：Tool Executor
+
+新增：
+
+```text
+app/workflows/executor.py
+```
+
+完成：
+
+- 注册当前工具名到 request schema 和真实工具函数的映射
+- 按 `state.tool_calls` 顺序执行工具
+- 解析 `$state...` 引用，例如 `$state.workspace.workspace_dir`
+- 检查 `depends_on` 是否已经满足
+- 将 workspace 结果写回 `state.workspace`
+- 将普通工具结果写回 `state.tool_results[result_key]`
+- 将 answer 结果写回 `state.final_answer`
+- 记录 `runtime["executor"]["executed_tool_calls"]`
+
+当前 `workflow.py` 仍用显式节点执行真实工具；executor 已可独立运行，后续会把主
+workflow 逐步收敛到 compiler/executor 驱动。

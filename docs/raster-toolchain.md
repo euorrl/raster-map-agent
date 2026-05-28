@@ -21,8 +21,9 @@ create_workspace
 ```
 
 这些工具可以单独调用和测试。当前 compiler 已经会把 workflow template 编译为
-`state.tool_calls`；`app/workflows/workflow.py` 仍以显式节点执行真实工具，后续会
-继续收敛到 executor。
+`state.tool_calls`，executor 已可独立执行这些 tool calls。当前
+`app/workflows/workflow.py` 仍以显式节点执行真实工具，后续会继续收敛到
+executor 驱动。
 
 ## Workspace
 
@@ -287,7 +288,9 @@ metadata 的字段来源遵循：
 
 对于 `landtype`、人口、夜光等非指数产品，`method.formula` 会被省略，避免把 `index_formula` 写进不适用的产品信息。
 
-当前 workflow 节点中 metadata export 仍在 `product_generation_node` 内显式调用；后续 executor 落地后会通过 `metadata.export_metadata` tool call 统一执行。
+当前 workflow 节点中 metadata export 仍在 `product_generation_node` 内显式调用；
+executor 已支持通过 `metadata.export_metadata` tool call 执行该工具，后续会接管
+主 workflow 的真实执行。
 
 ## Final Answer
 

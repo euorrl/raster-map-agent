@@ -78,6 +78,7 @@ final answer text
 - `workflow.py` 仍以显式节点编排真实工具
 - `tool_calls` 已由 compiler 写入
 - registry 解析结果暂存在 `runtime["registry"]`，同时被编译进 `tool_calls.params`
+- executor 已可独立执行 `tool_calls`
 
 ## 下一阶段：Compiler + Executor
 
@@ -94,8 +95,8 @@ plan + registry + workflow template
 1. 定义 `ToolCall` schema：已完成
 2. 实现 compiler：已完成
 3. 把 registry 解析结果写入 `tool_calls.params`：已完成
-4. 实现 `$state...` 引用解析
-5. 实现 executor
+4. 实现 `$state...` 引用解析：已完成
+5. 实现 executor：已完成
 6. 将当前显式节点逐步收敛为 compiler/executor 驱动
 
 建议 `tool_calls` 结构：
