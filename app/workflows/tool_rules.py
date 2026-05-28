@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agent.adjusters import (
-    adjust_raster_prepare_plan,
+    adjust_raster_prepare_tool_call,
     build_raster_prepare_adjustment_update,
 )
 from app.agent.validators import (
@@ -41,7 +41,7 @@ TOOL_RULES_BY_CALL_ID: dict[str, ToolRule] = {
         tool_call_id="raster_prepare",
         validator=validate_raster_prepare_result,
         validation_update_builder=build_raster_prepare_validation_update,
-        adjuster=adjust_raster_prepare_plan,
+        adjuster=adjust_raster_prepare_tool_call,
         adjustment_update_builder=build_raster_prepare_adjustment_update,
         max_retries=5,
     )
