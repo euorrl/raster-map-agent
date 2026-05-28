@@ -191,3 +191,54 @@ tool 执行
 ```
 
 这为后续局部 ReAct 做准备，同时保持 `tools/` 仍然是确定性工具层。
+
+## 阶段 11：Agent Planner
+
+当前分支开始补齐全局 planner。它不放在 `tools/`，而是放在 agent 层：
+
+```text
+app/agent/planners/
+  zhipu_planner.py
+```
+
+职责：
+
+- 读取用户自然语言需求
+- 调用智谱模型生成结构化 plan 和 tool_calls
+- `state.plan` 只允许保存 V1 workflow 需要 LLM 决策的核心字段
+- `tool_calls` 保存工具调用顺序和每一步参数映射
+- 不直接执行工具
+- 不生成自由 tool graph
+
+当前 planner 输出的核心字段：
+
+```text
+aoi_query
+index_name
+start_date
+end_date
+max_cloud_cover
+```
+
+约束：
+
+- `index_name` 必须来自 registry，例如 `NDVI` / `NDWI`
+- `max_cloud_cover` 初始值优先为 20，不得超过 30
+- `state.plan` 不保存 `data_source`、`need_render`、`include_colorbar`、
+  `need_metadata`
+- 不允许把 `scene_limit`、`max_selected_scenes` 等工具内部工程参数写入
+  `state.plan`
+
+当前 `tool_calls` 支持的 V1 工具顺序包括：
+
+```text
+workspace.create_workspace
+raster_prepare.prepare_raster_inputs
+index_calculation.calculate_raster_index
+render_preview.render_index_preview
+metadata.export_metadata
+answer.generate_final_answer
+```
+
+测试仍然使用 fake client，因此不依赖真实 API key。真实运行时会读取
+`.env` 中的智谱配置。

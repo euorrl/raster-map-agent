@@ -15,6 +15,14 @@ from app.agent.nodes import (
 from app.schemas.state import AgentState
 
 
+def route_after_planning(state: AgentState) -> str:
+    if state.status == "failed":
+        return "failed"
+    if state.plan.get("response_mode") == "direct_answer":
+        return "direct_answer"
+    return "raster_workflow"
+
+
 def route_after_validation(state: AgentState) -> str:
     if state.status == "validated":
         return "validated"
@@ -36,7 +44,15 @@ def build_v1_workflow():
     workflow.add_node("answer", answer_node)
 
     workflow.add_edge(START, "planner")
-    workflow.add_edge("planner", "registry")
+    workflow.add_conditional_edges(
+        "planner",
+        route_after_planning,
+        {
+            "direct_answer": "answer",
+            "failed": "answer",
+            "raster_workflow": "registry",
+        },
+    )
     workflow.add_edge("registry", "workflow_router")
     workflow.add_edge("workflow_router", "aoi")
     workflow.add_edge("aoi", "download")

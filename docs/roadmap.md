@@ -17,6 +17,7 @@ Agent 基础：
 - Pydantic `AgentState`
 - 动态 state 分区
 - `runtime` 运行时控制分区
+- 智谱全局 planner
 - agent validator / adjuster / policy 注册表
 
 工具链：
@@ -41,23 +42,25 @@ index GeoTIFF
 preview PNG
 ```
 
-## 当前阶段：Agent Validation Policy
+## 当前阶段：Agent Planner
 
 当前分支目标：
 
 ```text
-为 Agent 引入 validator / adjuster / retry runtime 基础结构
+为 Agent 引入受约束的全局 planner
 ```
 
 主要任务：
 
-- 完善 `AgentState.runtime`
-- 实现 raster_prepare validator
-- 实现基于智谱模型的 raster_prepare adjuster
-- 实现 tool policy 注册表
-- 为局部 ReAct 准备 retry 计数和路由依据
+- 实现 `app/agent/planners/zhipu_planner.py`
+- 将自然语言需求转换为结构化 `state.plan`
+- 输出工具调用计划 `tool_calls`，记录调用顺序和参数映射
+- 约束 `state.plan` 只保留 V1 需要 LLM 决策的核心字段
+- 支持 fake client 离线测试，真实运行时读取智谱 `.env` 配置
 
-这一阶段已经具备真实 LLM adjuster 调用能力，但测试通过 fake client 离线验证，不要求改造完整 workflow。
+上一阶段已经完成 raster_prepare validator、adjuster、policy 和 retry runtime。
+当前 planner 同样具备真实智谱调用能力，但测试通过 fake client 离线验证。
+它暂不强制接入 mock workflow，避免普通测试依赖 API key。
 
 ## 下一阶段：V1 Agent Tool Integration
 
@@ -86,19 +89,32 @@ planner
 - render preview
 - metadata export
 
-## 后续阶段：Planner
+## Planner 输出约束
 
-Planner 负责把自然语言转成结构化计划：
+Planner 负责把自然语言转成两部分：
+
+- `state.plan`：只保存 LLM 真正需要决策的业务参数
+- `tool_calls`：保存工具调用顺序和每一步参数映射
 
 ```json
 {
   "aoi_query": "Chengdu, Sichuan, China",
   "index_name": "NDVI",
-  "data_source": "sentinel2",
   "start_date": "2024-06-01",
   "end_date": "2024-08-31",
   "max_cloud_cover": 20
 }
+```
+
+`tool_calls` 当前是受约束的 V1 工具计划，例如：
+
+```text
+workspace.create_workspace
+-> raster_prepare.prepare_raster_inputs
+-> index_calculation.calculate_raster_index
+-> render_preview.render_index_preview
+-> metadata.export_metadata
+-> answer.generate_final_answer
 ```
 
 V1 中 planner 可以先是受约束的结构化输出，不追求完全自由 tool planning。
