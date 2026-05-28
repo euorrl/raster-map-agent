@@ -1,8 +1,8 @@
 # 项目架构
 
-当前项目采用分层结构：先保证真实工具链可以独立运行，再把工具链接入 Agent workflow。
+本文记录当前项目的代码结构、状态设计和模块边界。
 
-## 顶层目录
+## 总体分层
 
 ```text
 app/
@@ -10,26 +10,14 @@ app/
   registry/
   schemas/
   tools/
-  utils/
   workflows/
-tests/
-scripts/
-docs/
-data/
 ```
 
-## app
+## `app/schemas`
 
-### `app/schemas`
+保存跨模块共享的数据结构。当前最重要的是 `AgentState`。
 
-存放 Agent workflow 层面的 state。
-
-当前重点：
-
-- `AgentState`
-- workflow 节点之间共享的状态字段
-
-当前 `AgentState` 采用“稳定顶层 + 动态分区”的设计：
+`AgentState` 采用“稳定顶层 + 动态分区”的设计：
 
 ```text
 user_query
@@ -37,198 +25,184 @@ plan
 workspace
 tool_results
 metadata
+runtime
+final_answer
 status
 errors
 warnings
-final_answer
 ```
 
-设计意图：
+字段含义：
 
-- `plan` 保存 planner 生成的结构化参数
-- `workspace` 保存任务级 workspace 路径
-- `tool_results` 保存各工具的原始返回结果
-- `metadata` 保存后续写入 metadata JSON 的分区化内容
-- `errors` 和 `warnings` 使用追加 reducer，便于多个节点累积反馈
+- `user_query`：用户原始输入
+- `plan`：结构化任务计划，例如 `response_mode`、AOI、指数、日期和云量
+- `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
+- `tool_results`：各工具的原始返回结果，按工具名分区保存
+- `metadata`：最终记录、导出和回答生成用的元数据分区
+- `runtime`：workflow 运行时控制信息，例如 planner 结果、tool plan、retry 次数、validator 和 adjuster 结果
+- `final_answer`：最终返回给用户的答案
+- `status`：当前 workflow 状态
+- `errors`：追加式错误列表
+- `warnings`：追加式警告列表
 
-这样新增工具时，不需要不断向 state 顶层添加字段，而是写入：
+`plan`、`workspace`、`tool_results`、`metadata`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 会把它合并进已有 state。
 
-```text
-tool_results["tool_name"]
-metadata["tool_name"]
-```
+## `app/tools`
 
-### `app/agent`
+真实领域工具层。工具应尽量保持确定性、可单独测试、可离线调用，并且不直接读写 `AgentState`。
 
-存放 LangGraph 节点函数。
-
-当前已经有 mock nodes，后续会逐步替换为真实工具调用：
-
-```text
-planner_node
-registry_node
-workspace_node
-raster_prepare_node
-raster_prepare_validator_node
-product_generation_node
-answer_node
-```
-
-V1 当前采用强约束 workflow：LLM planner 负责生成产品意图和参数，Graph 负责保证执行顺序。
-其中 `raster_prepare_node`、`product_generation_node` 已经接入真实工具入口；测试中通过
-patch 工具函数避免真实网络请求和大文件处理。后续局部 ReAct 将优先围绕
-`raster_prepare_validator_node` 扩展。
-
-### `app/workflows`
-
-存放 workflow builder。
-
-当前：
-
-- `workflow.py`
-- 已经能跑通 mock workflow
-
-后续：
-
-- 接入真实工具链
-- 加入局部 ReAct 或条件路由
-
-### `app/registry`
-
-存放指数、产品类型等可扩展配置。
-
-当前：
-
-- `raster_products.py`
-- Sentinel-2 数据源配置
-- Landsat 数据源注册信息
-- NDVI / NDWI 指数配置
-- 指数在不同数据源下的 band roles
-- 指数默认渲染配置
-- 解析 `index_name + data_source` 的产品配置
-
-后续扩展：
-
-- NDBI
-- SAVI
-- 其他专题图产品
-
-### `app/tools`
-
-真实工具层。工具应尽量保持输入输出清晰，不依赖 LLM。
-
-当前通用工具：
-
-- `workspace/`：创建一次任务级 workspace，后续数据准备、计算和渲染共享该目录
-- `raster_prepare/`：根据aoi区域和日期输出剪切好的GeoTIFF
-- `index_calculation/`：读取裁剪后的 band GeoTIFF，计算 NDVI/NDWI 等指数并输出 GeoTIFF
-- `render_preview/`：读取指数 GeoTIFF，按 registry 渲染配置输出预览 PNG
-
-当前 raster prepare 工具结构：
+当前工具：
 
 ```text
+app/tools/workspace/
 app/tools/raster_prepare/
-  schemas.py
-  aoi.py
-  scene_plan.py
-  download.py
-  mosaic.py
-  clip.py
-  prepare.py
+app/tools/index_calculation/
+app/tools/render_preview/
+app/tools/metadata/
+app/tools/answer/
 ```
 
 职责：
 
-- `schemas.py`：工具请求、结果和错误模型
-- `aoi.py`：通过 Nominatim 解析 AOI 边界，保存 GeoJSON，返回 bbox
-- `scene_plan.py`：搜索 STAC metadata，累积候选 scene，执行 coverage-aware greedy 选择，并生成 diagnostics
-- `download.py`：按 scene plan 下载 COG band asset
-- `mosaic.py`：按 band 扫描输入目录，用 `first` 策略合并多张 GeoTIFF；遇到 CRS 不一致时用 `WarpedVRT` 临时重投影
-- `clip.py`：按 AOI GeoJSON 裁剪 GeoTIFF，并将 AOI 外像素写为 `-9999.0`
-- `prepare.py`：串联 AOI、scene plan、download、mosaic、clip，作为数据准备模块对外主入口
+- `workspace`：创建 `data/<uuid>/` 任务工作区
+- `raster_prepare`：AOI 解析、scene plan、下载、mosaic、clip，输出裁剪后的 band GeoTIFF
+- `index_calculation`：根据 band roles 和 formula 计算指数 GeoTIFF
+- `render_preview`：根据 registry 渲染配置生成 PNG 预览图
+- `metadata`：将 workflow metadata 导出为 `output/metadata.json`
+- `answer`：通过 LLM 生成最终回答，支持 `metadata_summary` 和 `direct_answer`
 
-### `app/utils`
+注意：`answer` 是 tools 中少数需要 LLM 的工具。它仍被放在工具层，是因为它是最终产物生成器，而不是 planner 或 adjuster 这样的控制组件。测试通过 fake client 注入，不依赖真实 API key。
 
-通用基础设施。
+## `app/registry`
 
-当前：
+保存稳定知识和配置：
 
-- 日志配置
+- 数据源配置
+- 指数公式
+- band roles
+- STAC asset 映射
+- 渲染参数
 
-## tests
-
-测试按模块组织：
-
-```text
-tests/tools/raster_prepare/
-  test_aoi.py
-  test_download.py
-  test_mosaic.py
-  test_clip.py
-  test_prepare.py
-```
-
-当前测试策略：
-
-- 单元测试不访问真实网络
-- 使用 monkeypatch mock 外部 API
-- clip 和 mosaic 测试使用临时 GeoTIFF 验证真实 rasterio 行为
-- prepare 测试 mock 各子工具，只验证 pipeline 编排、workspace 和清理逻辑
-
-## scripts
-
-本地手动验证入口，不作为正式 API。
-
-当前：
+当前主要文件：
 
 ```text
-scripts/raster/run_aoi.py
-scripts/raster/run_download.py
-scripts/raster/run_mosaic.py
-scripts/raster/run_clip.py
-scripts/raster/run_prepare.py
+app/registry/raster_products.py
 ```
 
-定位：
+目前 registry 已包含 Sentinel-2、Landsat 的基础配置，以及 NDVI / NDWI 的数据源波段映射。V1 的真实 `raster_prepare` 只执行 Sentinel-2。
 
-- 快速试真实 API
-- 快速检查产物
-- 开发阶段辅助调试
+## `app/agent`
 
-## data
+Agent 控制层。它不直接承担 GIS 计算，而是负责：
 
-本地任务 workspace 目录，不进入 git。
+- LangGraph 节点
+- planner
+- validator
+- adjuster
+- tool policy
+- 后续局部 ReAct
 
-当前每次任务会先通过 workspace 工具在 `data/` 下创建一个 UUID workspace：
+当前结构：
+
+```text
+app/agent/
+  nodes.py
+  policies.py
+  planners/
+    zhipu_planner.py
+  validators/
+    raster_prepare_validator.py
+  adjusters/
+    raster_prepare_adjuster.py
+```
+
+全局 planner 负责把自然语言需求转换成受约束的 `state.plan`，并把工具调用顺序写入 `runtime.tool_plan`。
+
+当前 planner 支持两种模式：
+
+- `raster_workflow`：正常执行栅格专题图 workflow
+- `direct_answer`：与当前栅格 workflow 无关的问题，或请求未注册产品时，直接进入最终回答
+
+`raster_prepare` 的治理关系由 `policies.py` 注册：
+
+```text
+raster_prepare
+  validator: raster_prepare_validator
+  adjuster: raster_prepare_adjuster
+  max_retries: 5
+```
+
+长期目标是：
+
+```text
+tool 执行
+-> validator 检查
+-> adjuster 调整参数
+-> runtime 记录 retry
+-> 路由决定继续、重试或失败
+```
+
+## `app/workflows`
+
+保存 LangGraph workflow builder。
+
+当前工具集成分支的真实 workflow 入口是：
+
+```text
+app/workflows/workflow.py
+```
+
+它已经开始编排真实工具节点：
+
+```text
+planner
+-> registry
+-> workspace
+-> raster_prepare
+-> raster_prepare_validator
+-> product_generation
+-> answer
+```
+
+其中 `product_generation` 当前包含：
+
+```text
+index_calculation
+render_preview
+metadata export
+```
+
+workflow 也已预留 `direct_answer` 路由：当 `state.plan.response_mode == "direct_answer"` 时，可以跳过栅格工具，直接进入 answer 节点。
+
+## 数据目录
+
+本地运行数据保存在：
+
+```text
+data/<uuid>/
+```
+
+典型结构：
 
 ```text
 data/<uuid>/
   aoi/
-  raster/
-  mosaic_raster/
   clipped_raster/
   output/
 ```
 
-成功完成裁剪后会保留：
+中间目录 `raster/` 和 `mosaic_raster/` 在 prepare 成功后会被清理。
+
+最终输出放在：
 
 ```text
-data/<uuid>/aoi
-data/<uuid>/clipped_raster
-data/<uuid>/output
+data/<uuid>/output/
 ```
 
-其中 `output/` 是该任务的最终结果目录，用于保存：
+例如：
 
 ```text
-data/<uuid>/output/<index>.tif
-data/<uuid>/output/<index>_preview.png
+data/<uuid>/output/ndvi.tif
+data/<uuid>/output/ndvi_preview.png
 data/<uuid>/output/metadata.json
-```
-
-并删除中间目录：
-
-```text
-data/<uuid>/raster
-data/<uuid>/mosaic_raster
 ```

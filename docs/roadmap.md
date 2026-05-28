@@ -1,131 +1,160 @@
 # 路线图
 
-本文记录 V1 和 V2 的计划边界。
+本文记录 V1 和 V2 的边界。
 
-## 当前已完成
+## 已完成
 
 工程基础：
 
 - Python 项目结构
-- 依赖文件
 - black / flake8 / pytest / coverage
-- pre-commit
 - CI
-- Read the Docs / MkDocs 配置
+- MkDocs / ReadTheDocs 配置
 
 Agent 基础：
 
 - mock LangGraph workflow
-- Pydantic state
-- mock nodes
-- workflow 测试
+- Pydantic `AgentState`
+- 动态 state 分区
+- `runtime` 运行时控制分区
+- 智谱全局 planner
+- `response_mode`：`raster_workflow` / `direct_answer`
+- agent validator / adjuster / policy 注册表
 
-工具基础：
+工具链：
 
-- logging
 - workspace 创建工具
-- raster product registry 雏形
-- 指数默认渲染配置
-- AOI 解析
+- raster product registry
+- Nominatim AOI 解析
 - Sentinel-2 scene plan
-- 多 scene band asset 下载
 - Shapely coverage diagnostics
+- band asset 下载
 - first mosaic by band
-- GeoTIFF clip
-- `prepare_raster_inputs` 数据准备 pipeline
-- `calculate_raster_index` 指数计算工具
-- `render_index_preview` 基础 PNG 渲染工具
+- AOI clip
+- `prepare_raster_inputs`
+- `calculate_raster_index`
+- `render_index_preview`
+- `export_metadata`
+- `generate_final_answer`
 
-当前工具链已经可以输出真实指数 GeoTIFF 和预览 PNG：
+真实工具链已经可以生成：
 
 ```text
-AOI query
--> workspace
--> AOI GeoJSON + bbox
--> scene plan
--> download raw bands
--> mosaic bands
--> clip bands
--> clipped B04 / clipped B08
--> NDVI / NDWI GeoTIFF
--> preview PNG
+clipped band GeoTIFF
+index GeoTIFF
+preview PNG
+metadata JSON
+final answer text
 ```
 
-## 下一阶段：metadata
+## 当前阶段：Metadata 与 Final Answer 工具补齐
+
+当前分支目标：
+
+```text
+补齐 metadata.export_metadata 和 answer.generate_final_answer
+```
+
+主要任务：
+
+- `app/tools/metadata` 导出 workflow metadata 到 `output/metadata.json`
+- `app/tools/answer` 支持 `metadata_summary` 和 `direct_answer`
+- planner 的 canonical tool params 为 metadata 和 answer 提供稳定参数映射
+- 测试通过 fake client 验证 answer，不依赖真实 API key
+
+## 下一阶段：V1 Agent Tool Integration
 
 目标：
 
 ```text
-index GeoTIFF + preview PNG
--> metadata JSON
+mock workflow
+-> 真实工具入口编排
 ```
 
-metadata 需要记录：
-
-- AOI 名称和边界路径
-- data source
-- scene ids
-- coverage diagnostics
-- band paths
-- index formula
-- index GeoTIFF 路径
-- preview PNG 路径
-
-## 下一阶段：planner
-
-输入示例：
+建议 workflow：
 
 ```text
-Generate an NDVI vegetation map for Hangzhou, Zhejiang, China.
+planner
+-> registry
+-> workspace
+-> raster_prepare
+-> raster_prepare_validator
+-> index_calculation
+-> render_preview
+-> metadata
+-> answer
 ```
 
-输出示例：
+需要处理：
+
+- 真实 tool runner 如何解析 `$workspace.workspace_dir`、`$metadata` 等占位符
+- tool result 如何写入 `state.tool_results`
+- metadata 如何逐步积累并导出
+- direct answer 如何跳过栅格工具
+- raster_prepare retry 和 adjuster 如何接入 LangGraph 路由
+
+## Planner 输出约束
+
+Planner 负责把自然语言转成两部分：
+
+- `state.plan`：只保存 LLM 真正需要决策的业务参数
+- `tool_calls`：保存工具调用顺序和每一步参数映射
+
+正常栅格任务示例：
 
 ```json
 {
-  "aoi_query": "Hangzhou, Zhejiang, China",
-  "index": "NDVI",
-  "date_range": ["2024-06-01", "2024-08-31"],
-  "max_cloud_cover": 30,
-  "data_source": "sentinel2"
+  "response_mode": "raster_workflow",
+  "aoi_query": "Chengdu, Sichuan, China",
+  "index_name": "NDVI",
+  "start_date": "2024-06-01",
+  "end_date": "2024-08-31",
+  "max_cloud_cover": 20
 }
 ```
 
-planner 初期可以简单，不需要复杂对话。它的重点是生成能对齐真实工具链的稳定参数。
+直接回答任务示例：
 
-## 下一阶段：局部 ReAct
+```json
+{
+  "response_mode": "direct_answer"
+}
+```
 
-ReAct 不作为主流程一开始就引入，而是用于容易失败的局部环节。
-
-适合位置：
-
-- AOI 查询失败：修改 query
-- scene plan 覆盖不足：扩大时间窗、放宽云量或增加 limit
-- coverage diagnostics 标记不可重试：结束循环并返回明确说明
-- 渲染异常：调整 nodata 或拉伸参数
-
-## 下一阶段：answer
-
-根据 metadata 和产品路径生成最终回答。
-
-示例：
+`tool_calls` 当前是受约束的 V1 工具计划，例如：
 
 ```text
-NDVI vegetation map generated for Hangzhou, Zhejiang, China.
-Preview: data/<uuid>/output/...
-GeoTIFF: data/<uuid>/output/...
-Coverage: 94.8%
+workspace.create_workspace
+-> raster_prepare.prepare_raster_inputs
+-> index_calculation.calculate_raster_index
+-> render_preview.render_index_preview
+-> metadata.export_metadata
+-> answer.generate_final_answer
 ```
+
+V1 中 planner 可以先是受约束的结构化输出，不追求完全自由 tool planning。
+
+## 后续阶段：局部 ReAct
+
+局部 ReAct 优先发生在 `raster_prepare` 阶段。
+
+典型场景：
+
+- AOI 查询失败：调整 `aoi_query`
+- coverage 不足：优先扩大时间范围，必要时小幅放宽云量
+- diagnostics 标记不可重试：终止循环并返回明确原因
+
+循环次数由 `state.runtime` 中的 per-tool retry 计数控制。当前 `raster_prepare` 最多重试 5 次。
 
 ## V1 完成标准
 
-本地运行：
+本地完整运行：
 
 ```text
 用户自然语言请求
 -> Agent workflow
 -> 真实工具链
--> 输出 GeoTIFF + PNG + metadata + final answer
+-> GeoTIFF + PNG + metadata + final answer
 ```
 
 V1 不要求：
@@ -134,7 +163,7 @@ V1 不要求：
 - MCP server
 - 部署
 - 多用户系统
-- 复杂人机交互
+- 完全自由 tool-calling agent
 
 ## V2 方向
 
@@ -143,28 +172,11 @@ V2 是产品化与标准化阶段：
 - MCP server 化
 - FastAPI 后端
 - 前端
-- 部署
 - 任务队列
 - 缓存
 - 更复杂的 ReAct
 - 多 AOI provider
-- 多数据源
+- 更多数据源
 - 更多指数和专题图产品
-
-## 当前 Coverage 规则
-
-scene plan 仍然使用 AOI bbox 进行 STAC 搜索，但 coverage diagnostics 已改为读取真实 AOI GeoJSON。
-
-判断对象是：
-
-```text
-scene footprint union 对 AOI GeoJSON geometry 的覆盖率
-```
-
-当前 V1 不再要求 100% 覆盖，而是使用最低可接受阈值：
-
-```python
-min_coverage_ratio = 0.7
-```
-
-如果 AOI GeoJSON 缺失或无效，diagnostics 会返回 `unknown` 和 `is_retriable=false`，表示当前问题不是可通过日期、云量或 limit 调整解决的。
+- skill / workflow registry，用于管理更多工具和产品流程
+- Guarded tool-calling agent runtime

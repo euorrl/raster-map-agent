@@ -1,10 +1,12 @@
 from pathlib import Path
 
+from app.agent.nodes import answer_node
+from app.schemas import AgentState
 from app.tools.index_calculation import IndexCalculationResult
 from app.tools.raster_prepare import RasterPrepareResult, RasterScenePlanDiagnostics
 from app.tools.render_preview import RenderPreviewResult
 from app.tools.workspace import WorkspaceResult
-from app.workflows.workflow import run_workflow
+from app.workflows.workflow import route_after_planning, run_workflow
 
 
 def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
@@ -77,3 +79,26 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
     assert state.tool_results["metadata_export"]["metadata_path"]
     assert state.final_answer
     assert Path(state.tool_results["metadata_export"]["metadata_path"]).exists()
+
+
+def test_route_after_planning_sends_direct_answer_to_answer_node():
+    state = AgentState(
+        user_query="What is remote sensing?",
+        plan={"response_mode": "direct_answer"},
+        status="planned",
+    )
+
+    assert route_after_planning(state) == "direct_answer"
+
+
+def test_answer_node_handles_direct_answer_mode():
+    state = AgentState(
+        user_query="What is remote sensing?",
+        plan={"response_mode": "direct_answer"},
+        status="planned",
+    )
+
+    update = answer_node(state)
+
+    assert update["status"] == "completed"
+    assert update["final_answer"] == "Mock direct answer for: What is remote sensing?"

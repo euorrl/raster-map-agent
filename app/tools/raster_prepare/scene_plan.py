@@ -488,12 +488,11 @@ def _build_coverage_diagnostics(
         message=(
             f"Selected scenes cover {coverage_ratio:.2%} of the AOI geometry, "
             f"below the minimum required coverage {min_coverage_ratio:.2%}. "
-            "Try expanding date range, relaxing cloud cover, or increasing limit."
+            "Try expanding date range or relaxing cloud cover."
         ),
         suggested_actions=[
             "expand_date_range",
             "increase_max_cloud_cover",
-            "increase_limit",
         ],
         selected_scene_count=len(selected_scenes),
     )
