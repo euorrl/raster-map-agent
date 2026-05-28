@@ -114,6 +114,12 @@ def metadata_node(state: AgentState) -> dict[str, Any]:
 
 
 def answer_node(state: AgentState) -> dict[str, Any]:
+    if state.plan.get("response_mode") == "direct_answer":
+        return {
+            "final_answer": f"Mock direct answer for: {state.user_query}",
+            "status": "completed",
+        }
+
     if state.status == "failed":
         error_text = "; ".join(state.errors) or "Unknown workflow error."
         return {

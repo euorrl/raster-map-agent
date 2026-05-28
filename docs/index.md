@@ -31,7 +31,9 @@ workspace
 -> preview PNG
 ```
 
-当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证 LangGraph state 传递。真实工具接入 Agent workflow 是下一步集成任务。
+Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 policy
+注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证
+LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
 
 ## 当前架构重点
 
@@ -64,13 +66,19 @@ warnings
 因此 `raster_prepare` 不直接内置 LLM ReAct。当前局部 ReAct 的基础已经放在 agent 层：
 
 ```text
-raster_prepare validator
+zhipu global planner
+-> structured state.plan
+-> runtime.tool_plan
+-> raster_prepare validator
 -> raster_prepare adjuster
 -> policy registry
 -> runtime retry count
 ```
 
-validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，policy 负责限制最多重试 5 次。
+planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。
+`state.plan` 只保留 AOI、指数、日期和云量这类核心业务参数；工具链顺序写入
+`runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮
+参数建议，policy 负责限制最多重试 5 次。
 
 ## 主要文档
 

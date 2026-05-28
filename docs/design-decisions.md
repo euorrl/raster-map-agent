@@ -11,7 +11,7 @@
 ```text
 先让真实工具链可运行
 再让 planner 生成参数
-再加入局部 ReAct
+再加入 validator / adjuster 局部 ReAct
 最后接入 LangGraph 完整 workflow
 ```
 
@@ -43,6 +43,7 @@ render_preview
 
 ```text
 nodes
+planners
 validators
 adjusters
 policies
@@ -52,6 +53,7 @@ policies
 
 ```text
 tool 负责做事
+planner 负责把自然语言转换成结构化计划
 validator 负责验收
 adjuster 负责修正参数
 policy 负责规定 tool、validator、adjuster 和 retry 的关系
@@ -88,7 +90,7 @@ GIS 处理有明确依赖：
 所以 V1 不追求完全自由 tool planning，而采用：
 
 ```text
-LLM 负责计划和参数
+LLM planner 负责计划和初始参数
 Graph 负责执行顺序
 Validator 负责质量检查
 Adjuster 负责有限参数修正
@@ -103,7 +105,7 @@ Adjuster 负责有限参数修正
 当前约定：
 
 ```text
-planner -> 输出 index_name + data_source
+planner -> 输出 aoi_query + index_name + date range + max_cloud_cover
 registry -> 展开 required_bands / band_roles / formula / render_config / STAC asset mapping
 raster_prepare -> 准备裁剪后的 band GeoTIFF
 index_calculation -> 根据 band_roles + formula 计算指数
@@ -111,6 +113,42 @@ render_preview -> 根据 index_name 和 render_config 渲染预览 PNG
 ```
 
 这样 LLM 不需要直接输出公式或猜波段。
+
+## Planner 是 Agent 组件，不是 Tool
+
+全局 planner 使用智谱模型，但它不放在 `app/tools`。原因是 planner 的职责不是
+执行领域计算，而是控制层的“理解需求与生成计划”。
+
+当前约定：
+
+```text
+app/agent/planners/zhipu_planner.py
+```
+
+planner 的输出分成两部分：
+
+```text
+state.plan
+runtime.tool_plan.steps
+```
+
+`state.plan` 只保留需要 LLM 决策的核心业务参数：
+
+```text
+aoi_query
+index_name
+start_date
+end_date
+max_cloud_cover
+```
+
+`runtime.tool_plan.steps` 保存 planner 给出的工具调用顺序和参数映射。当前 V1
+只允许受支持的工具名，且会把每一步参数规范化，避免 LLM 把内部工程参数写乱。
+
+planner 不会把 `data_source`、`need_render`、`include_colorbar`、
+`need_metadata`、`scene_limit`、`max_selected_scenes`、`workspace_dir`
+写入 `state.plan`。这些固定策略和工程参数仍由 registry、tool schema 和
+policy 控制。
 
 ## V1 数据源固定为 Sentinel-2
 
