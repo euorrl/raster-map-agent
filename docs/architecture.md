@@ -13,7 +13,7 @@ app/
   workflows/
 ```
 
-### `app/schemas`
+## `app/schemas`
 
 保存跨模块共享的数据结构。当前最重要的是 `AgentState`。
 
@@ -35,11 +35,11 @@ warnings
 字段含义：
 
 - `user_query`：用户原始输入
-- `plan`：结构化任务计划，例如 AOI、指数类型、日期、数据源和可调参数
+- `plan`：结构化任务计划，例如 `response_mode`、AOI、指数、日期和云量
 - `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
 - `tool_results`：各工具的原始返回结果，按工具名分区保存
-- `metadata`：最终记录和导出用的元数据分区
-- `runtime`：workflow 运行时控制信息，例如 tool plan、retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态
+- `metadata`：最终记录、导出和回答生成用的元数据分区
+- `runtime`：workflow 运行时控制信息，例如 planner 结果、tool plan、retry 次数、validator 和 adjuster 结果
 - `final_answer`：最终返回给用户的答案
 - `status`：当前 workflow 状态
 - `errors`：追加式错误列表
@@ -47,9 +47,9 @@ warnings
 
 `plan`、`workspace`、`tool_results`、`metadata`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 会把它合并进已有 state。
 
-### `app/tools`
+## `app/tools`
 
-真实领域工具层。工具应尽量保持确定性、可单独测试、可离线调用，不直接依赖 LLM。
+真实领域工具层。工具应尽量保持确定性、可单独测试、可离线调用，并且不直接读写 `AgentState`。
 
 当前工具：
 
@@ -58,6 +58,8 @@ app/tools/workspace/
 app/tools/raster_prepare/
 app/tools/index_calculation/
 app/tools/render_preview/
+app/tools/metadata/
+app/tools/answer/
 ```
 
 职责：
@@ -66,8 +68,12 @@ app/tools/render_preview/
 - `raster_prepare`：AOI 解析、scene plan、下载、mosaic、clip，输出裁剪后的 band GeoTIFF
 - `index_calculation`：根据 band roles 和 formula 计算指数 GeoTIFF
 - `render_preview`：根据 registry 渲染配置生成 PNG 预览图
+- `metadata`：将 workflow metadata 导出为 `output/metadata.json`
+- `answer`：通过 LLM 生成最终回答，支持 `metadata_summary` 和 `direct_answer`
 
-### `app/registry`
+注意：`answer` 是 tools 中少数需要 LLM 的工具。它仍被放在工具层，是因为它是最终产物生成器，而不是 planner 或 adjuster 这样的控制组件。测试通过 fake client 注入，不依赖真实 API key。
+
+## `app/registry`
 
 保存稳定知识和配置：
 
@@ -85,7 +91,7 @@ app/registry/raster_products.py
 
 目前 registry 已包含 Sentinel-2、Landsat 的基础配置，以及 NDVI / NDWI 的数据源波段映射。V1 的真实 `raster_prepare` 只执行 Sentinel-2。
 
-### `app/agent`
+## `app/agent`
 
 Agent 控制层。它不直接承担 GIS 计算，而是负责：
 
@@ -110,10 +116,14 @@ app/agent/
     raster_prepare_adjuster.py
 ```
 
-当前分支已经引入智谱全局 planner、agent 层验证和调整策略。planner 负责把
-自然语言需求转换成受约束的 `state.plan`，并把工具调用顺序写入
-`runtime.tool_plan`，但暂未强制接入 mock workflow。
-当前 `raster_prepare` 的治理关系由 `policies.py` 注册：
+全局 planner 负责把自然语言需求转换成受约束的 `state.plan`，并把工具调用顺序写入 `runtime.tool_plan`。
+
+当前 planner 支持两种模式：
+
+- `raster_workflow`：正常执行栅格专题图 workflow
+- `direct_answer`：与当前栅格 workflow 无关的问题，或请求未注册产品时，直接进入最终回答
+
+`raster_prepare` 的治理关系由 `policies.py` 注册：
 
 ```text
 raster_prepare
@@ -125,14 +135,18 @@ raster_prepare
 长期目标是：
 
 ```text
-tool 执行 -> validator 检查 -> adjuster 调整参数 -> runtime 记录 retry -> 路由决定继续/重试/失败
+tool 执行
+-> validator 检查
+-> adjuster 调整参数
+-> runtime 记录 retry
+-> 路由决定继续、重试或失败
 ```
 
-### `app/workflows`
+## `app/workflows`
 
 保存 LangGraph workflow builder。
 
-当前 `develop` 基线中仍然是：
+当前文件：
 
 ```text
 app/workflows/v1_workflow.py
@@ -146,9 +160,13 @@ planner
 -> workspace
 -> raster_prepare
 -> raster_prepare_validator
--> product_generation
+-> index_calculation
+-> render_preview
+-> metadata
 -> answer
 ```
+
+当前 workflow 已预留 `direct_answer` 路由：当 `state.plan.response_mode == "direct_answer"` 时，可以跳过栅格工具，直接进入 answer 节点。
 
 ## 数据目录
 

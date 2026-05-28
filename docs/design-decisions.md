@@ -30,14 +30,16 @@ workspace
 raster_prepare
 index_calculation
 render_preview
+metadata
+answer
 ```
 
-这些工具应该尽量：
+工具应尽量：
 
 - 输入输出清晰
 - 可单独测试
-- 不依赖 LLM
-- 不直接读取 AgentState
+- 不直接读取 `AgentState`
+- 不承担 workflow 路由职责
 
 `app/agent` 保存控制逻辑：
 
@@ -60,13 +62,14 @@ policy 负责规定 tool、validator、adjuster 和 retry 的关系
 workflow 负责路由
 ```
 
+`answer` 工具有 LLM 调用，但它仍是最终产物生成器，不是控制层 planner。
+
 ## 为什么不把 ReAct 放进 raster_prepare
 
 `raster_prepare` 本质是数据准备工具：
 
 ```text
-AOI + 日期 + 指数 + 数据源
--> clipped band GeoTIFF
+AOI + 日期 + 指数 + 数据源 -> clipped band GeoTIFF
 ```
 
 如果把 LLM ReAct 直接塞进 `raster_prepare`，它会从确定性工具变成一个小 agent，导致：
@@ -85,6 +88,7 @@ GIS 处理有明确依赖：
 没有 workspace 不能稳定保存文件
 没有 prepared raster 不能计算指数
 没有 index GeoTIFF 不能渲染 preview
+没有 metadata 很难生成可信最终回答
 ```
 
 所以 V1 不追求完全自由 tool planning，而采用：
@@ -105,7 +109,7 @@ Adjuster 负责有限参数修正
 当前约定：
 
 ```text
-planner -> 输出 aoi_query + index_name + date range + max_cloud_cover
+planner -> 输出 response_mode + aoi_query + index_name + date range + max_cloud_cover
 registry -> 展开 required_bands / band_roles / formula / render_config / STAC asset mapping
 raster_prepare -> 准备裁剪后的 band GeoTIFF
 index_calculation -> 根据 band_roles + formula 计算指数
@@ -116,10 +120,9 @@ render_preview -> 根据 index_name 和 render_config 渲染预览 PNG
 
 ## Planner 是 Agent 组件，不是 Tool
 
-全局 planner 使用智谱模型，但它不放在 `app/tools`。原因是 planner 的职责不是
-执行领域计算，而是控制层的“理解需求与生成计划”。
+全局 planner 使用智谱模型，但它不放在 `app/tools`。原因是 planner 的职责不是执行领域计算，而是控制层的“理解需求与生成计划”。
 
-当前约定：
+当前位置：
 
 ```text
 app/agent/planners/zhipu_planner.py
@@ -135,6 +138,7 @@ runtime.tool_plan.steps
 `state.plan` 只保留需要 LLM 决策的核心业务参数：
 
 ```text
+response_mode
 aoi_query
 index_name
 start_date
@@ -142,13 +146,35 @@ end_date
 max_cloud_cover
 ```
 
-`runtime.tool_plan.steps` 保存 planner 给出的工具调用顺序和参数映射。当前 V1
-只允许受支持的工具名，且会把每一步参数规范化，避免 LLM 把内部工程参数写乱。
+`runtime.tool_plan.steps` 保存 planner 给出的工具调用顺序和参数映射。当前 V1 只允许受支持的工具名，且会把每一步参数规范化，避免 LLM 把内部工程参数写乱。
 
-planner 不会把 `data_source`、`need_render`、`include_colorbar`、
-`need_metadata`、`scene_limit`、`max_selected_scenes`、`workspace_dir`
-写入 `state.plan`。这些固定策略和工程参数仍由 registry、tool schema 和
-policy 控制。
+planner 不会把 `data_source`、`need_render`、`include_colorbar`、`need_metadata`、`scene_limit`、`max_selected_scenes`、`workspace_dir` 写入 `state.plan`。这些固定策略和工程参数仍由 registry、tool schema 和 policy 控制。
+
+## 为什么引入 response_mode
+
+并不是所有用户输入都应该进入栅格工作流。例如：
+
+```text
+什么是遥感？
+你支持哪些地图？
+生成成都人口密度图
+```
+
+如果当前 registry 不支持用户请求的产品，强行映射到 NDVI/NDWI 会产生错误结果。
+
+因此 planner 增加：
+
+```text
+response_mode = raster_workflow | direct_answer
+```
+
+- `raster_workflow`：用户请求可由当前注册表和工具链完成
+- `direct_answer`：普通问答、无关问题、系统能力询问、或当前未支持产品
+
+这样 final answer 节点可以选择：
+
+- 基于 metadata 总结真实 workflow 结果
+- 直接回答用户问题或说明当前不支持
 
 ## V1 数据源固定为 Sentinel-2
 
@@ -210,7 +236,7 @@ data/<uuid>/output/
 
 ## coverage 阈值不是 100%
 
-Sentinel-2 scene footprint 与 AOI 几何存在真实空间关系，不应只用 bbox 最值判断。
+Sentinel-2 scene footprint 与 AOI 几何存在真实空间关系，不应只用 bbox 最大值判断。
 
 当前 coverage diagnostics 使用：
 
@@ -224,4 +250,4 @@ V1 不强制 100% 覆盖，而使用较高但可接受的阈值：
 min_coverage_ratio = 0.7
 ```
 
-失败时 diagnostics 会提供是否可重试、失败原因和建议动作。
+失败时 diagnostics 会提供是否可重试、失败原因和建议动作。coverage ratio 会进入 metadata，后续 answer 可以向用户解释影像覆盖不足或结果局限。
