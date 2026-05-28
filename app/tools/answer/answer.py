@@ -14,6 +14,83 @@ AnswerLLMClient = Callable[[list[dict[str, str]]], str]
 
 logger = get_logger(__name__)
 
+AGENT_CAPABILITY_KEYWORDS = (
+    "你是",
+    "你谁",
+    "您是谁",
+    "您谁",
+    "你是什么",
+    "您是什么",
+    "你如何使用",
+    "您如何使用",
+    "你是干" "您是干",
+    "你是做",
+    "您是做",
+    "你是什么",
+    "你的功能",
+    "你的能力",
+    "你有哪些功能",
+    "你有哪些能力",
+    "你支持什么",
+    "你支持哪些",
+    "你能做什么",
+    "你可以做什么",
+    "可以做什么",
+    "能做什么",
+    "能帮我做什么",
+    "能帮我什么",
+    "能处理什么",
+    "可以处理什么",
+    "支持哪些任务",
+    "支持什么任务",
+    "有什么功能",
+    "有什么能力",
+    "功能介绍",
+    "能力介绍",
+    "使用说明",
+    "怎么使用你",
+    "如何使用你",
+    "介绍一下你",
+    "介绍一下自己",
+    "介绍你",
+    "介绍下你",
+    "介绍下自己",
+    "自我介绍",
+    "关于你",
+    "这个系统能做什么",
+    "这个助手能做什么",
+    "这个工具能做什么",
+    "raster map agent",
+    "raster-map-agent",
+    "what are you",
+    "who are you",
+    "what can you do",
+    "what do you do",
+    "your capabilities",
+    "your functions",
+    "how to use you",
+    "how can i use you",
+    "introduce yourself",
+    "tell me about yourself",
+    "what is raster-map-agent",
+    "what is raster map agent",
+)
+
+AGENT_PROFILE_ANSWER = (
+    "我是 raster-map-agent，一个面向栅格遥感产品生成的工作流助手。\n\n"
+    "我当前主要能做三件事：\n"
+    "1. 根据用户给出的地点、时间范围和云量条件，规划栅格产品生成任务。\n"
+    "2. 调用已注册的栅格产品流程生成专题图，目前以注册表中的产品为准，"
+    "例如 NDVI（植被）和 NDWI（水体）。\n"
+    "3. 根据生成后的产品信息，简要说明数据来源、时间范围、空间信息和"
+    "重要警告；如果任务失败，我会说明失败原因并给出可调整方向。\n\n"
+    "我不会凭空承诺未接入的产品能力。比如 population、landtype / "
+    "land cover 等产品如果还没有注册，我会说明当前暂不支持，而不是强行"
+    "映射成 NDVI 或 NDWI。\n\n"
+    "可运行示例：生成成都 2024-06-01 到 2024-08-31 的 NDVI 图，"
+    "最大云量 20%。"
+)
+
 
 def generate_final_answer(
     request: FinalAnswerRequest,
@@ -23,6 +100,9 @@ def generate_final_answer(
 
     logger.info("Generating final answer mode=%s", request.answer_mode)
 
+    if _should_return_agent_profile(request):
+        return FinalAnswerResult(final_answer=AGENT_PROFILE_ANSWER)
+
     try:
         raw_response = _call_answer_llm(request, client)
         parsed_response = _parse_json_object(raw_response)
@@ -31,6 +111,13 @@ def generate_final_answer(
         raise FinalAnswerError(str(error)) from error
 
     return FinalAnswerResult(final_answer=final_answer)
+
+
+def _should_return_agent_profile(request: FinalAnswerRequest) -> bool:
+    return (
+        request.answer_mode == "direct_answer"
+        and _infer_direct_answer_task(request.question or "") == "agent_profile"
+    )
 
 
 def _call_answer_llm(
@@ -78,10 +165,16 @@ def _call_zhipuai_chat(messages: list[dict[str, str]]) -> str:
 
 def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
     if request.answer_mode == "direct_answer":
+        direct_answer_task = _infer_direct_answer_task(request.question or "")
         task_prompt = (
-            "用户问题与栅格地图 workflow 无关，或当前系统暂不支持该产品。"
-            "请直接回答用户问题；如果用户在请求一个未注册的地图产品，"
-            "请说明当前暂不支持，并尽量指出当前回答基于已有能力范围。"
+            "请根据 direct_answer_task 生成最终回答。\n"
+            "- 如果 direct_answer_task 是 agent_profile：介绍 raster-map-agent "
+            "是什么、能做什么、当前适合处理哪些栅格地图任务，并给出一个"
+            "可运行的用户提问示例。不要声称已经执行工具。\n"
+            "- 如果 direct_answer_task 是 general_answer：直接回答用户问题；"
+            "如果用户请求未注册或暂不支持的地图产品，请说明当前暂不支持，"
+            "并指出当前能力范围。\n\n"
+            f"direct_answer_task: {direct_answer_task}\n"
             "\n\n"
             f"question:\n{request.question}"
         )
@@ -89,12 +182,19 @@ def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
         context = {
             "user_query": request.user_query,
             "metadata": request.metadata,
+            "metadata_has_failure": _metadata_has_failure(request.metadata),
         }
         task_prompt = (
-            "请根据 workflow metadata 生成最终用户回答。回答应简洁说明任务结果、"
-            "核心参数、空间信息和任何重要警告。不要编造 metadata 中不存在的"
-            "文件、指标或结论。如果 workflow metadata 显示失败或缺少结果，"
-            "请清楚说明原因。"
+            "请根据 workflow metadata 生成最终用户回答。\n"
+            "- 正常完成时：回答要简要，优先说明产品名称/类型、区域、时间范围、"
+            "数据来源、分辨率、CRS、云量等 metadata 中真实存在的关键信息；"
+            "不要编造文件、指标、结论或不存在的路径。\n"
+            "- 如果 metadata_has_failure 为 true，或 metadata 中存在 status=failed、"
+            "errors、失败诊断、缺少关键结果：回答要更详细，说明失败阶段、"
+            "失败原因、已知上下文、用户可以如何调整请求，并提供一个正常运行"
+            "的示例，例如：生成成都 NDVI 图，时间范围 2024-06-01 到 "
+            "2024-08-31，最大云量 20%。\n"
+            "- 如果只有警告没有失败：简要说明结果，并补充警告含义。\n"
             "\n\n"
             f"context:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
         )
@@ -114,6 +214,53 @@ def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
             "content": task_prompt,
         },
     ]
+
+
+def _infer_direct_answer_task(question: str) -> str:
+    normalized = question.strip().lower()
+    if any(keyword in normalized for keyword in AGENT_CAPABILITY_KEYWORDS):
+        return "agent_profile"
+
+    return "general_answer"
+
+
+def _metadata_has_failure(metadata: dict) -> bool:
+    if not metadata:
+        return True
+
+    status = metadata.get("status")
+    if isinstance(status, str) and status.lower() in {"failed", "error"}:
+        return True
+
+    for key in ("errors", "error", "failure", "diagnostics"):
+        value = metadata.get(key)
+        if _contains_failure_signal(value):
+            return True
+
+    return False
+
+
+def _contains_failure_signal(value) -> bool:
+    if value is None:
+        return False
+
+    if isinstance(value, str):
+        return bool(value.strip())
+
+    if isinstance(value, list):
+        return any(_contains_failure_signal(item) for item in value)
+
+    if isinstance(value, dict):
+        status = value.get("status")
+        if isinstance(status, str) and status.lower() in {"failed", "error"}:
+            return True
+        return any(
+            _contains_failure_signal(item)
+            for key, item in value.items()
+            if key in {"errors", "error", "failure", "message", "reason"}
+        )
+
+    return False
 
 
 def _parse_json_object(raw_response: str) -> dict:

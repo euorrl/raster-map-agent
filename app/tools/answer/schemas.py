@@ -13,8 +13,10 @@ class FinalAnswerRequest(BaseModel):
     """最终回答生成请求。
 
     answer_mode 是 answer tool 的直接控制参数：
-    - metadata_summary: 根据 workflow metadata 总结真实执行结果。
-    - direct_answer: 对普通问题或当前不支持的产品直接回答。
+    - metadata_summary: 根据 workflow metadata 总结真实执行结果；失败时输出
+      更详细的诊断和正常运行示例。
+    - direct_answer: 对普通问题、当前不支持的产品或 agent 能力介绍类问题
+      直接回答。
     """
 
     answer_mode: AnswerMode

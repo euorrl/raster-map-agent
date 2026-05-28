@@ -41,6 +41,67 @@ LEGACY_RESPONSE_MODE_ROUTES: dict[str, AgentRoute] = {
     "raster_workflow": RASTER_PRODUCT_GENERATE_ROUTE,
     "direct_answer": DIRECT_ANSWER_ROUTE,
 }
+AGENT_PROFILE_KEYWORDS = (
+    "你是",
+    "你谁",
+    "您是谁",
+    "您谁",
+    "你是什么",
+    "您是什么",
+    "你如何使用",
+    "您如何使用",
+    "你是干" "您是干",
+    "你是做",
+    "您是做",
+    "你是什么",
+    "你的功能",
+    "你的能力",
+    "你有哪些功能",
+    "你有哪些能力",
+    "你支持什么",
+    "你支持哪些",
+    "你能做什么",
+    "你可以做什么",
+    "可以做什么",
+    "能做什么",
+    "能帮我做什么",
+    "能帮我什么",
+    "能处理什么",
+    "可以处理什么",
+    "支持哪些任务",
+    "支持什么任务",
+    "有什么功能",
+    "有什么能力",
+    "功能介绍",
+    "能力介绍",
+    "使用说明",
+    "怎么使用你",
+    "如何使用你",
+    "介绍一下你",
+    "介绍一下自己",
+    "介绍你",
+    "介绍下你",
+    "介绍下自己",
+    "自我介绍",
+    "关于你",
+    "这个系统能做什么",
+    "这个助手能做什么",
+    "这个工具能做什么",
+    "raster map agent",
+    "raster-map-agent",
+    "what are you",
+    "who are you",
+    "what can you do",
+    "what do you do",
+    "your capabilities",
+    "your functions",
+    "how to use you",
+    "how can i use you",
+    "introduce yourself",
+    "tell me about yourself",
+    "what is raster-map-agent",
+    "what is raster map agent",
+)
 
 
 class AgentPlanRequest(BaseModel):
@@ -72,6 +133,15 @@ def build_agent_plan(
     plan_request = (
         AgentPlanRequest(user_query=request) if isinstance(request, str) else request
     )
+    if _is_agent_profile_query(plan_request.user_query):
+        return AgentPlanResult(
+            status="planned",
+            plan={
+                "route": DIRECT_ANSWER_ROUTE,
+                "answer_mode": "direct_answer",
+            },
+            rationale="User asks about raster-map-agent capabilities.",
+        )
 
     try:
         raw_response = _call_planner_llm(plan_request, client)
@@ -247,6 +317,11 @@ def _build_registered_option_context() -> list[dict[str, Any]]:
         }
         for index_name, config in sorted(INDEX_REGISTRY.items())
     ]
+
+
+def _is_agent_profile_query(user_query: str) -> bool:
+    normalized = user_query.strip().lower()
+    return any(keyword in normalized for keyword in AGENT_PROFILE_KEYWORDS)
 
 
 def _parse_json_object(raw_response: str) -> dict[str, Any]:

@@ -205,9 +205,8 @@ def answer_node(state: AgentState) -> dict[str, Any]:
         }
 
     if state.status == "failed":
-        error_text = "; ".join(state.errors) or "Unknown workflow error."
         return {
-            "final_answer": f"Workflow failed: {error_text}",
+            "final_answer": _build_workflow_failure_answer(state),
             "status": "failed",
         }
 
@@ -236,3 +235,22 @@ def _get_last_tool_call_id(state: AgentState) -> str | None:
         return value
 
     return None
+
+
+def _build_workflow_failure_answer(state: AgentState) -> str:
+    """生成 answer tool 未执行时的失败兜底回答。"""
+    error_text = "; ".join(state.errors) or "Unknown workflow error."
+    warning_text = "; ".join(state.warnings)
+    failed_tool = state.runtime.get("last_tool_call_id")
+
+    details = [f"任务执行失败：{error_text}"]
+    if failed_tool:
+        details.append(f"最近执行的工具步骤：{failed_tool}。")
+    if warning_text:
+        details.append(f"相关警告：{warning_text}")
+
+    details.append(
+        "可以尝试一个正常运行示例：生成成都 NDVI 图，时间范围 "
+        "2024-06-01 到 2024-08-31，最大云量 20%。"
+    )
+    return "\n".join(details)

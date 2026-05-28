@@ -118,6 +118,34 @@ def test_build_agent_plan_direct_answer_route_defaults_answer_mode():
     }
 
 
+def test_build_agent_plan_agent_profile_skips_llm_client():
+    def fake_client(messages):
+        raise AssertionError("agent profile planning should not call LLM")
+
+    result = build_agent_plan("你是谁？你有什么功能？", client=fake_client)
+
+    assert result.status == "planned"
+    assert result.plan == {
+        "route": "direct_answer",
+        "answer_mode": "direct_answer",
+    }
+    assert result.rationale == "User asks about raster-map-agent capabilities."
+
+
+def test_build_agent_plan_agent_profile_supports_more_phrasings():
+    def fake_client(messages):
+        raise AssertionError("agent profile planning should not call LLM")
+
+    for user_query in ("使用说明", "What can you do?"):
+        result = build_agent_plan(user_query, client=fake_client)
+
+        assert result.status == "planned"
+        assert result.plan == {
+            "route": "direct_answer",
+            "answer_mode": "direct_answer",
+        }
+
+
 def test_build_agent_plan_accepts_legacy_response_mode():
     result = build_agent_plan(
         "What is remote sensing?",

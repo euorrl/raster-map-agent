@@ -12,28 +12,11 @@ from app.workflows.workflow import run_workflow  # noqa: E402
 def main() -> None:
     configure_logging("INFO")
 
-    user_query = "中国的NDVI分布如何"
+    user_query = "你是？"
     state = run_workflow(user_query)
 
-    print("status:", state.status)
+    print("\n" + "-" * 30 + "\n")
     print("final_answer:", state.final_answer)
-    print("workspace_dir:", state.workspace.get("workspace_dir"))
-    print(
-        "index_tif_path:",
-        state.tool_results.get("index_calculation", {}).get("index_tif_path"),
-    )
-    print(
-        "preview_path:",
-        state.tool_results.get("render_preview", {}).get("preview_path"),
-    )
-    print(
-        "metadata_path:",
-        state.tool_results.get("metadata_export", {}).get("metadata_path"),
-    )
-    if state.errors:
-        print("errors:", state.errors)
-    if state.warnings:
-        print("warnings:", state.warnings)
 
 
 if __name__ == "__main__":

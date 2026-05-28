@@ -507,7 +507,8 @@ def test_linear_workflow_returns_answer_when_planner_fails(monkeypatch):
     state = runner.invoke(AgentState(user_query="Bad request."))
 
     assert state.status == "failed"
-    assert state.final_answer == "Workflow failed: planner failed"
+    assert "任务执行失败：planner failed" in state.final_answer
+    assert "正常运行示例" in state.final_answer
 
 
 def test_linear_workflow_fails_when_compiler_produces_no_tool_calls(monkeypatch):
@@ -643,7 +644,8 @@ def test_linear_workflow_stops_when_executor_fails(monkeypatch):
     state = runner.invoke(AgentState(user_query="Executor failure."))
 
     assert state.status == "failed"
-    assert state.final_answer == "Workflow failed: executor failed"
+    assert "任务执行失败：executor failed" in state.final_answer
+    assert "正常运行示例" in state.final_answer
 
 
 def test_linear_workflow_stops_when_validation_fails(monkeypatch):
@@ -659,7 +661,8 @@ def test_linear_workflow_stops_when_validation_fails(monkeypatch):
     state = runner.invoke(AgentState(user_query="Validator failure."))
 
     assert state.status == "failed"
-    assert state.final_answer == "Workflow failed: validator failed"
+    assert "任务执行失败：validator failed" in state.final_answer
+    assert "正常运行示例" in state.final_answer
 
 
 def test_linear_workflow_finishes_when_validation_passes_last_tool(monkeypatch):
