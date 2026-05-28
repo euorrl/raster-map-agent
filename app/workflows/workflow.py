@@ -1,5 +1,9 @@
 from langgraph.graph import END, START, StateGraph
 
+from app.agent.workflow_templates import (
+    DIRECT_ANSWER_ROUTE,
+    RASTER_PRODUCT_GENERATE_ROUTE,
+)
 from app.agent.nodes import (
     answer_node,
     planner_node,
@@ -15,9 +19,9 @@ from app.schemas.state import AgentState
 def route_after_planning(state: AgentState) -> str:
     if state.status == "failed":
         return "failed"
-    if state.plan.get("route") == "direct_answer":
-        return "direct_answer"
-    return "raster_product_generate"
+    if state.plan.get("route") == DIRECT_ANSWER_ROUTE:
+        return DIRECT_ANSWER_ROUTE
+    return RASTER_PRODUCT_GENERATE_ROUTE
 
 
 def route_after_raster_prepare_validation(state: AgentState) -> str:
@@ -42,9 +46,9 @@ def build_workflow():
         "planner",
         route_after_planning,
         {
-            "direct_answer": "answer",
+            DIRECT_ANSWER_ROUTE: "answer",
             "failed": "answer",
-            "raster_product_generate": "registry",
+            RASTER_PRODUCT_GENERATE_ROUTE: "registry",
         },
     )
     workflow.add_edge("registry", "workspace")

@@ -5,12 +5,20 @@ from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, Field
 
+from app.agent.workflow_templates import (
+    DIRECT_ANSWER_ROUTE,
+    RASTER_PRODUCT_GENERATE_ROUTE,
+    WorkflowRoute,
+    get_workflow_route_answer_modes,
+    get_workflow_template_routes,
+)
 from app.registry import INDEX_REGISTRY
+from app.tools.answer.schemas import AnswerMode
 from app.utils import get_zhipuai_settings
 
 AgentPlanStatus = Literal["planned", "failed"]
-AgentRoute = Literal["raster_product_generate", "direct_answer"]
-AgentAnswerMode = Literal["metadata_summary", "direct_answer"]
+AgentRoute = WorkflowRoute
+AgentAnswerMode = AnswerMode
 PlannerLLMClient = Callable[[list[dict[str, str]]], str]
 
 MAX_INITIAL_CLOUD_COVER = 30.0
@@ -26,15 +34,12 @@ PLAN_FIELDS = {
     "end_date",
     "max_cloud_cover",
 }
-ROUTES = {"raster_product_generate", "direct_answer"}
-ANSWER_MODES = {"metadata_summary", "direct_answer"}
-ROUTE_ANSWER_MODES: dict[AgentRoute, AgentAnswerMode] = {
-    "raster_product_generate": "metadata_summary",
-    "direct_answer": "direct_answer",
-}
+ROUTES = set(get_workflow_template_routes())
+ROUTE_ANSWER_MODES = get_workflow_route_answer_modes()
+ANSWER_MODES = set(ROUTE_ANSWER_MODES.values())
 LEGACY_RESPONSE_MODE_ROUTES: dict[str, AgentRoute] = {
-    "raster_workflow": "raster_product_generate",
-    "direct_answer": "direct_answer",
+    "raster_workflow": RASTER_PRODUCT_GENERATE_ROUTE,
+    "direct_answer": DIRECT_ANSWER_ROUTE,
 }
 
 
@@ -155,7 +160,7 @@ def _build_planner_messages(request: AgentPlanRequest) -> list[dict[str, str]]:
         "current_date": date.today().isoformat(),
         "supported_indexes": sorted(INDEX_REGISTRY.keys()),
         "registered_options": _build_registered_option_context(),
-        "workflow_routes": sorted(ROUTES),
+        "workflow_routes": get_workflow_template_routes(),
         "answer_modes": sorted(ANSWER_MODES),
         "max_cloud_cover_limit": MAX_INITIAL_CLOUD_COVER,
     }
@@ -356,16 +361,16 @@ def _sanitize_route(
         legacy_response_mode=legacy_response_mode,
     )
     if route_value is None:
-        return inferred_route or "raster_product_generate"
+        return inferred_route or RASTER_PRODUCT_GENERATE_ROUTE
 
     if not isinstance(route_value, str):
-        fallback_route = inferred_route or "raster_product_generate"
+        fallback_route = inferred_route or RASTER_PRODUCT_GENERATE_ROUTE
         warnings.append(f"Ignored invalid planner route; using {fallback_route}.")
         return fallback_route
 
     route = route_value.strip()
     if route not in ROUTES:
-        fallback_route = inferred_route or "raster_product_generate"
+        fallback_route = inferred_route or RASTER_PRODUCT_GENERATE_ROUTE
         warnings.append(
             f"Ignored unsupported planner route: {route_value}; using "
             f"{fallback_route}."
@@ -426,9 +431,9 @@ def _infer_route(
     if isinstance(answer_mode_value, str):
         answer_mode = answer_mode_value.strip().lower()
         if answer_mode == "direct_answer":
-            return "direct_answer"
+            return DIRECT_ANSWER_ROUTE
         if answer_mode == "metadata_summary":
-            return "raster_product_generate"
+            return RASTER_PRODUCT_GENERATE_ROUTE
 
     if isinstance(legacy_response_mode, str):
         response_mode = legacy_response_mode.strip().lower()
