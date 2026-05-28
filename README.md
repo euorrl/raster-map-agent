@@ -53,7 +53,7 @@ render_preview
 metadata export
 ```
 
-Planner 只负责生成结构化 `state.plan`。工具顺序由 workflow/template 控制，后续 compiler 会根据 `plan + registry + workflow template` 生成 `state.tool_calls`。
+Planner 只负责生成结构化 `state.plan`。工具顺序由 workflow/template 控制，compiler 会根据 `plan + registry + workflow template` 生成 `state.tool_calls`。
 
 ## Planner 输出
 

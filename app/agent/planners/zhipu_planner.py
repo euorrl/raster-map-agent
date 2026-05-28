@@ -53,7 +53,7 @@ class AgentPlanResult(BaseModel):
     """全局 planner 输出结果。
 
     Planner 只负责产出结构化 plan，不执行工具，也不生成工具调用链。
-    后续 compiler 会根据 plan.route 编译 state.tool_calls。
+    compiler 会根据 plan.route 编译 state.tool_calls。
     """
 
     status: AgentPlanStatus

@@ -297,6 +297,7 @@ app/tools/answer/
 ```text
 planner
 -> registry
+-> compiler
 -> workspace
 -> raster_prepare
 -> raster_prepare_validator
@@ -306,6 +307,25 @@ planner
 
 当前仍未完成：
 
-- compiler：`plan + registry + workflow template -> tool_calls`
 - executor：解析并执行 `tool_calls`
 - retry/adjuster 接入完整 graph 路由
+
+## 阶段 15：Tool Call Compiler
+
+新增：
+
+```text
+app/workflows/compiler.py
+```
+
+完成：
+
+- 定义 `ToolCall` schema
+- 根据 `plan + registry + workflow template` 编译 `state.tool_calls`
+- raster 产品路线会编译 workspace、raster_prepare、index_calculation、render_preview、metadata_export 和 answer
+- direct answer 路线只编译 answer
+- 已知的 plan / registry 参数会固化到 `params`
+- 尚未产生的 workspace、tool result 和完整 state 使用 `$state...` 引用保留
+
+当前 executor 尚未实现，所以 `workflow.py` 仍用显式节点执行真实工具；`tool_calls`
+先作为可检查、可测试的执行计划进入 state。

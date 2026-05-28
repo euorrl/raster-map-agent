@@ -43,10 +43,12 @@ warnings
 关键边界：
 
 - `plan`：planner 生成的用户任务意图
-- `tool_calls`：后续 compiler 生成的带参数工具调用计划
+- `tool_calls`：compiler 生成的带参数工具调用计划
 - `runtime`：运行时控制信息，例如 planner 结果、registry 解析结果、validator/adjuster 结果、retry count
 
-项目不再保留单独的 `resolved` state 分区。当前 registry 解析结果暂存在 `runtime["registry"]["raster_product"]`，后续 compiler 落地后会直接编译进 `tool_calls.params`。
+项目不再保留单独的 `resolved` state 分区。registry 解析结果暂存在
+`runtime["registry"]["raster_product"]`，并由 compiler 编译进
+`tool_calls.params`。
 
 Metadata 导出不依赖 state 中的 metadata 分区。`metadata.export_metadata`
 接收 state snapshot，并抽取精简产品信息对象，用于最终回答和用户查看。

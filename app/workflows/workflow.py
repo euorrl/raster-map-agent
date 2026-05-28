@@ -6,6 +6,7 @@ except ModuleNotFoundError:
 
 from app.agent.nodes import (
     answer_node,
+    compiler_node,
     planner_node,
     product_generation_node,
     raster_prepare_node,
@@ -28,6 +29,14 @@ def route_after_planning(state: AgentState) -> str:
     return RASTER_PRODUCT_GENERATE_ROUTE
 
 
+def route_after_compilation(state: AgentState) -> str:
+    if state.status == "failed":
+        return "failed"
+    if state.plan.get("route") == DIRECT_ANSWER_ROUTE:
+        return DIRECT_ANSWER_ROUTE
+    return RASTER_PRODUCT_GENERATE_ROUTE
+
+
 def route_after_raster_prepare_validation(state: AgentState) -> str:
     if state.status == "raster_prepare_validated":
         return "prepared"
@@ -42,6 +51,7 @@ def build_workflow():
 
     workflow.add_node("planner", planner_node)
     workflow.add_node("registry", registry_node)
+    workflow.add_node("compiler", compiler_node)
     workflow.add_node("workspace", workspace_node)
     workflow.add_node("raster_prepare", raster_prepare_node)
     workflow.add_node("raster_prepare_validator", raster_prepare_validator_node)
@@ -53,12 +63,21 @@ def build_workflow():
         "planner",
         route_after_planning,
         {
-            DIRECT_ANSWER_ROUTE: "answer",
+            DIRECT_ANSWER_ROUTE: "compiler",
             "failed": "answer",
             RASTER_PRODUCT_GENERATE_ROUTE: "registry",
         },
     )
-    workflow.add_edge("registry", "workspace")
+    workflow.add_edge("registry", "compiler")
+    workflow.add_conditional_edges(
+        "compiler",
+        route_after_compilation,
+        {
+            DIRECT_ANSWER_ROUTE: "answer",
+            "failed": "answer",
+            RASTER_PRODUCT_GENERATE_ROUTE: "workspace",
+        },
+    )
     workflow.add_edge("workspace", "raster_prepare")
     workflow.add_edge("raster_prepare", "raster_prepare_validator")
     workflow.add_conditional_edges(
@@ -76,16 +95,21 @@ def build_workflow():
 
 
 class _LinearWorkflow:
-    """Small fallback runner used when LangGraph is not installed."""
+    """缺少 LangGraph 时使用的轻量线性 fallback runner。"""
 
     def invoke(self, state: AgentState) -> AgentState:
         state = _apply_update(state, planner_node(state))
         if route_after_planning(state) == DIRECT_ANSWER_ROUTE:
+            state = _apply_update(state, compiler_node(state))
             return _apply_update(state, answer_node(state))
         if state.status == "failed":
             return _apply_update(state, answer_node(state))
 
         state = _apply_update(state, registry_node(state))
+        state = _apply_update(state, compiler_node(state))
+        if state.status == "failed":
+            return _apply_update(state, answer_node(state))
+
         state = _apply_update(state, workspace_node(state))
         state = _apply_update(state, raster_prepare_node(state))
         state = _apply_update(state, raster_prepare_validator_node(state))

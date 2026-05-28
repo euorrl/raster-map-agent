@@ -121,7 +121,8 @@ end_date
 max_cloud_cover
 ```
 
-Planner 不生成 `tool_calls`。后续 `tool_calls` 将由系统 compiler 根据 `plan + registry + workflow template` 生成。
+Planner 不生成 `tool_calls`。`tool_calls` 由系统 compiler 根据
+`plan + registry + workflow template` 生成。
 
 Planner 也不写这些内部字段：
 

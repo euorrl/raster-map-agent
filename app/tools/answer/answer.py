@@ -92,7 +92,7 @@ def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
         }
         task_prompt = (
             "请根据 workflow metadata 生成最终用户回答。回答应简洁说明任务结果、"
-            "核心参数、主要输出文件和任何重要警告。不要编造 metadata 中不存在的"
+            "核心参数、空间信息和任何重要警告。不要编造 metadata 中不存在的"
             "文件、指标或结论。如果 workflow metadata 显示失败或缺少结果，"
             "请清楚说明原因。"
             "\n\n"

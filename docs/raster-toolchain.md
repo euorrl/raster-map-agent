@@ -20,7 +20,9 @@ create_workspace
 -> generate_final_answer
 ```
 
-这些工具可以单独调用和测试。当前 `app/workflows/workflow.py` 已经开始显式编排真实工具节点；后续 compiler/executor 会把 workflow template 编译为 `state.tool_calls` 再执行。
+这些工具可以单独调用和测试。当前 compiler 已经会把 workflow template 编译为
+`state.tool_calls`；`app/workflows/workflow.py` 仍以显式节点执行真实工具，后续会
+继续收敛到 executor。
 
 ## Workspace
 

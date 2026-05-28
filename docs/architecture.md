@@ -46,7 +46,7 @@ warnings
 
 - `user_query`：用户原始输入
 - `plan`：planner 生成的结构化用户任务意图
-- `tool_calls`：后续 compiler 生成的工具调用计划
+- `tool_calls`：compiler 生成的带参数工具调用计划
 - `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
 - `tool_results`：各工具的原始返回结果，按工具名分区保存
 - `runtime`：workflow 运行时控制信息
@@ -63,7 +63,9 @@ warnings
 state.runtime["registry"]["raster_product"]
 ```
 
-后续 compiler 完成后，registry 解析结果会直接进入 `state.tool_calls[*]["params"]`。
+当前 compiler 会把 registry 解析结果编译进
+`state.tool_calls[*]["params"]`。`runtime["registry"]` 仍作为过渡期真实节点执行
+的上下文保留。
 
 ## `app/registry`
 
@@ -149,6 +151,7 @@ Planner 不输出工具调用顺序，不生成 `tool_calls`，不决定 validat
 
 ```text
 app/workflows/
+  compiler.py
   workflow.py
   templates.py
   tool_rules.py
@@ -157,6 +160,7 @@ app/workflows/
 职责：
 
 - `templates.py`：route 到工具序列骨架的注册表
+- `compiler.py`：根据 `plan + registry + workflow template` 生成 `tool_calls`
 - `tool_rules.py`：工具结果后处理规则，包含 validator、adjuster、最大 retry 次数
 - `workflow.py`：当前 V1 workflow graph；缺少 LangGraph 时提供线性 fallback runner
 
@@ -178,13 +182,15 @@ metadata.export_metadata
 answer.generate_final_answer
 ```
 
-当前 `workflow.py` 仍以节点方式显式编排这些步骤，compiler/executor 尚未实现。
+当前 `workflow.py` 仍以节点方式显式执行真实工具，但已经在 planner/registry 后
+编译 `state.tool_calls`。executor 尚未实现。
 
 当前节点流程：
 
 ```text
 planner
 -> registry
+-> compiler
 -> workspace
 -> raster_prepare
 -> raster_prepare_validator

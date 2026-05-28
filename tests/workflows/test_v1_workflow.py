@@ -89,6 +89,16 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
     assert state.status == "completed"
     assert state.plan["index_name"] == "NDVI"
     assert "required_bands" not in state.plan
+    assert [tool_call["id"] for tool_call in state.tool_calls] == [
+        "workspace",
+        "raster_prepare",
+        "index_calculation",
+        "render_preview",
+        "metadata_export",
+        "answer",
+    ]
+    assert state.tool_calls[1]["params"]["aoi_query"] == "Milan, Lombardy, Italy"
+    assert state.tool_calls[2]["params"]["band_roles"] == {"red": "B04", "nir": "B08"}
     assert state.runtime["registry"]["raster_product"]["required_bands"] == [
         "B04",
         "B08",
@@ -128,3 +138,32 @@ def test_answer_node_handles_direct_answer_mode():
 
     assert update["status"] == "completed"
     assert update["final_answer"] == "Mock direct answer for: What is remote sensing?"
+
+
+def test_v1_workflow_compiles_direct_answer_tool_call(monkeypatch):
+    import app.agent.nodes as nodes
+
+    def fake_build_agent_plan(user_query):
+        return AgentPlanResult(
+            status="planned",
+            plan={"route": "direct_answer", "answer_mode": "direct_answer"},
+            rationale="Mock direct planner result.",
+        )
+
+    monkeypatch.setattr(nodes, "build_agent_plan", fake_build_agent_plan)
+
+    state = run_workflow("What is remote sensing?")
+
+    assert state.status == "completed"
+    assert state.tool_calls == [
+        {
+            "id": "answer",
+            "tool_name": "answer.generate_final_answer",
+            "params": {
+                "answer_mode": "direct_answer",
+                "question": "$state.user_query",
+            },
+            "depends_on": [],
+            "result_key": "final_answer",
+        }
+    ]

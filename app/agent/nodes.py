@@ -16,11 +16,22 @@ from app.tools.metadata import MetadataExportRequest, export_metadata
 from app.tools.raster_prepare import RasterPrepareRequest, prepare_raster_inputs
 from app.tools.render_preview import RenderPreviewRequest, render_index_preview
 from app.tools.workspace import WorkspaceRequest, create_workspace
+from app.workflows.compiler import build_tool_calls_update
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
     result = build_agent_plan(state.user_query)
     return build_agent_plan_update(result)
+
+
+def compiler_node(state: AgentState) -> dict[str, Any]:
+    try:
+        return build_tool_calls_update(state)
+    except Exception as error:
+        return {
+            "errors": [f"Tool call compilation failed: {error}"],
+            "status": "failed",
+        }
 
 
 def registry_node(state: AgentState) -> dict[str, Any]:
