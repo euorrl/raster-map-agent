@@ -48,7 +48,7 @@ nodes
 planners
 validators
 adjusters
-policies
+tool_rules
 ```
 
 也就是说：
@@ -58,7 +58,7 @@ tool 负责做事
 planner 负责把自然语言转换成结构化计划
 validator 负责验收
 adjuster 负责修正参数
-policy 负责规定 tool、validator、adjuster 和 retry 的关系
+tool_rules 负责规定 tool、validator、adjuster 和 retry 的关系
 workflow 负责路由
 ```
 
@@ -148,7 +148,7 @@ max_cloud_cover
 
 `runtime.tool_plan.steps` 保存 planner 给出的工具调用顺序和参数映射。当前 V1 只允许受支持的工具名，且会把每一步参数规范化，避免 LLM 把内部工程参数写乱。
 
-planner 不会把 `data_source`、`need_render`、`include_colorbar`、`need_metadata`、`scene_limit`、`max_selected_scenes`、`workspace_dir` 写入 `state.plan`。这些固定策略和工程参数仍由 registry、tool schema 和 policy 控制。
+planner 不会把 `data_source`、`need_render`、`include_colorbar`、`need_metadata`、`scene_limit`、`max_selected_scenes`、`workspace_dir` 写入 `state.plan`。这些固定策略和工程参数仍由 registry、tool schema 和 tool_rules 控制。
 
 ## 为什么引入 response_mode
 

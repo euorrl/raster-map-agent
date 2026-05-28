@@ -99,7 +99,7 @@ Agent 控制层。它不直接承担 GIS 计算，而是负责：
 - planner
 - validator
 - adjuster
-- tool policy
+- tool rules
 - 后续局部 ReAct
 
 当前结构：
@@ -107,7 +107,7 @@ Agent 控制层。它不直接承担 GIS 计算，而是负责：
 ```text
 app/agent/
   nodes.py
-  policies.py
+  tool_rules.py
   planners/
     zhipu_planner.py
   validators/
@@ -123,7 +123,7 @@ app/agent/
 - `raster_workflow`：正常执行栅格专题图 workflow
 - `direct_answer`：与当前栅格 workflow 无关的问题，或请求未注册产品时，直接进入最终回答
 
-`raster_prepare` 的治理关系由 `policies.py` 注册：
+`raster_prepare` 的治理关系由 `tool_rules.py` 注册：
 
 ```text
 raster_prepare

@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.policies import (
+from app.agent.tool_rules import (
     build_retry_exhausted_update,
     can_retry_tool,
     get_agent_tool_policy,

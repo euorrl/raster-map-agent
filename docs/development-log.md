@@ -162,14 +162,14 @@ data/<uuid>/output/<index>_preview.png
 ```text
 app/agent/validators/
 app/agent/adjusters/
-app/agent/policies.py
+app/agent/tool_rules.py
 ```
 
 已完成：
 
 - `raster_prepare_validator`：检查 prepare 结果是否可继续、可重试或失败
 - `raster_prepare_adjuster`：调用智谱模型生成下一轮参数建议
-- `policies.py`：注册 tool、validator、adjuster 和最大重试次数
+- `tool_rules.py`：注册 tool、validator、adjuster 和最大重试次数
 - `state.runtime`：记录 validator 结果、adjuster 结果和 retry count
 - `prepare_raster_inputs`：scene coverage 不达标时在下载前短路返回 diagnostics
 
