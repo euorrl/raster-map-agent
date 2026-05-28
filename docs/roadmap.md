@@ -18,6 +18,7 @@ Agent 基础：
 - 动态 state 分区
 - `runtime` 运行时控制分区
 - 智谱全局 planner
+- `response_mode`：`raster_workflow` / `direct_answer`
 - agent validator / adjuster / policy 注册表
 
 工具链：
@@ -33,6 +34,8 @@ Agent 基础：
 - `prepare_raster_inputs`
 - `calculate_raster_index`
 - `render_index_preview`
+- `export_metadata`
+- `generate_final_answer`
 
 真实工具链已经可以生成：
 
@@ -40,27 +43,24 @@ Agent 基础：
 clipped band GeoTIFF
 index GeoTIFF
 preview PNG
+metadata JSON
+final answer text
 ```
 
-## 当前阶段：Agent Planner
+## 当前阶段：Metadata 与 Final Answer 工具补齐
 
 当前分支目标：
 
 ```text
-为 Agent 引入受约束的全局 planner
+补齐 metadata.export_metadata 和 answer.generate_final_answer
 ```
 
 主要任务：
 
-- 实现 `app/agent/planners/zhipu_planner.py`
-- 将自然语言需求转换为结构化 `state.plan`
-- 输出工具调用计划 `tool_calls`，记录调用顺序和参数映射
-- 约束 `state.plan` 只保留 V1 需要 LLM 决策的核心字段
-- 支持 fake client 离线测试，真实运行时读取智谱 `.env` 配置
-
-上一阶段已经完成 raster_prepare validator、adjuster、policy 和 retry runtime。
-当前 planner 同样具备真实智谱调用能力，但测试通过 fake client 离线验证。
-它暂不强制接入 mock workflow，避免普通测试依赖 API key。
+- `app/tools/metadata` 导出 workflow metadata 到 `output/metadata.json`
+- `app/tools/answer` 支持 `metadata_summary` 和 `direct_answer`
+- planner 的 canonical tool params 为 metadata 和 answer 提供稳定参数映射
+- 测试通过 fake client 验证 answer，不依赖真实 API key
 
 ## 下一阶段：V1 Agent Tool Integration
 
@@ -79,15 +79,19 @@ planner
 -> workspace
 -> raster_prepare
 -> raster_prepare_validator
--> product_generation
+-> index_calculation
+-> render_preview
+-> metadata
 -> answer
 ```
 
-其中 `product_generation` 暂时包括：
+需要处理：
 
-- index calculation
-- render preview
-- metadata export
+- 真实 tool runner 如何解析 `$workspace.workspace_dir`、`$metadata` 等占位符
+- tool result 如何写入 `state.tool_results`
+- metadata 如何逐步积累并导出
+- direct answer 如何跳过栅格工具
+- raster_prepare retry 和 adjuster 如何接入 LangGraph 路由
 
 ## Planner 输出约束
 
@@ -96,13 +100,24 @@ Planner 负责把自然语言转成两部分：
 - `state.plan`：只保存 LLM 真正需要决策的业务参数
 - `tool_calls`：保存工具调用顺序和每一步参数映射
 
+正常栅格任务示例：
+
 ```json
 {
+  "response_mode": "raster_workflow",
   "aoi_query": "Chengdu, Sichuan, China",
   "index_name": "NDVI",
   "start_date": "2024-06-01",
   "end_date": "2024-08-31",
   "max_cloud_cover": 20
+}
+```
+
+直接回答任务示例：
+
+```json
+{
+  "response_mode": "direct_answer"
 }
 ```
 
@@ -163,4 +178,5 @@ V2 是产品化与标准化阶段：
 - 多 AOI provider
 - 更多数据源
 - 更多指数和专题图产品
+- skill / workflow registry，用于管理更多工具和产品流程
 - Guarded tool-calling agent runtime

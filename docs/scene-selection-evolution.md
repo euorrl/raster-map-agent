@@ -495,3 +495,14 @@ scene 没有新增贡献，或达到 `max_selected_scenes`。
 - 如果低于阈值，diagnostics 仍然会建议扩大日期或放宽云量
 
 这不是放弃质量控制，而是把 coverage 从绝对门槛改成可解释的质量指标。
+
+## 与 metadata / answer 的关系
+
+`scene_plan` 产生的 diagnostics 不只是中间调试信息。它会沿着后续状态进入
+workflow metadata，并最终服务于两个目标：
+
+- `metadata.export_metadata`：把 coverage ratio、coverage status、failure reason 和
+  suggested actions 等信息写入 `output/metadata.json`
+- `answer.generate_final_answer`：在最终回答中向用户解释影像覆盖、重试建议或结果局限
+
+因此 scene selection 的输出要保持结构化和可解释，而不是只返回成功/失败布尔值。

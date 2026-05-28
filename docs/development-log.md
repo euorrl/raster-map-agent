@@ -48,13 +48,13 @@ tool_results
 metadata
 ```
 
-当前又加入：
+后续加入：
 
 ```text
 runtime
 ```
 
-用于后续记录 retry 次数、validator 结果和局部 ReAct 状态。
+用于记录 planner 结果、tool plan、retry 次数、validator 结果和局部 ReAct 状态。
 
 ## 阶段 4：日志与基础模块整理
 
@@ -155,7 +155,7 @@ data/<uuid>/output/<index>_preview.png
 
 ## 阶段 10：Agent Validation Policy
 
-当前分支把验证和调整逻辑从工具层剥离出来，放到 agent 层。
+验证和调整逻辑从工具层剥离出来，放到 agent 层。
 
 新增结构：
 
@@ -194,7 +194,7 @@ tool 执行
 
 ## 阶段 11：Agent Planner
 
-当前分支开始补齐全局 planner。它不放在 `tools/`，而是放在 agent 层：
+全局 planner 放在 agent 层：
 
 ```text
 app/agent/planners/
@@ -210,9 +210,10 @@ app/agent/planners/
 - 不直接执行工具
 - 不生成自由 tool graph
 
-当前 planner 输出的核心字段：
+当前 planner 核心字段：
 
 ```text
+response_mode
 aoi_query
 index_name
 start_date
@@ -222,12 +223,11 @@ max_cloud_cover
 
 约束：
 
+- `response_mode` 为 `raster_workflow` 或 `direct_answer`
 - `index_name` 必须来自 registry，例如 `NDVI` / `NDWI`
 - `max_cloud_cover` 初始值优先为 20，不得超过 30
-- `state.plan` 不保存 `data_source`、`need_render`、`include_colorbar`、
-  `need_metadata`
-- 不允许把 `scene_limit`、`max_selected_scenes` 等工具内部工程参数写入
-  `state.plan`
+- `state.plan` 不保存 `data_source`、`need_render`、`include_colorbar`、`need_metadata`
+- 不允许把 `scene_limit`、`max_selected_scenes` 等工具内部工程参数写入 `state.plan`
 
 当前 `tool_calls` 支持的 V1 工具顺序包括：
 
@@ -240,5 +240,51 @@ metadata.export_metadata
 answer.generate_final_answer
 ```
 
-测试仍然使用 fake client，因此不依赖真实 API key。真实运行时会读取
-`.env` 中的智谱配置。
+测试使用 fake client，因此不依赖真实 API key。真实运行时读取 `.env` 中的智谱配置。
+
+## 阶段 12：Metadata Export Tool
+
+新增：
+
+```text
+app/tools/metadata/
+  schemas.py
+  metadata.py
+  __init__.py
+```
+
+职责：
+
+- 将 workflow metadata 导出为 JSON
+- 默认输出到 `workspace_dir/output/metadata.json`
+- JSON 包含 `schema_version`、`exported_at` 和 `metadata`
+- 支持序列化 `Path`、Pydantic model、`set`
+
+它是确定性工具，不依赖 LLM。
+
+## 阶段 13：Final Answer Tool
+
+新增：
+
+```text
+app/tools/answer/
+  schemas.py
+  answer.py
+  __init__.py
+```
+
+职责：
+
+- 生成最终面向用户的回答
+- `metadata_summary`：根据 `user_query` 和 workflow metadata 总结结果
+- `direct_answer`：对普通问答、无关问题或当前未支持产品直接回答
+
+它通过智谱模型生成结构化 JSON：
+
+```json
+{
+  "final_answer": "..."
+}
+```
+
+测试通过 fake client 注入响应，不依赖真实 API key。

@@ -1,6 +1,6 @@
 # 栅格工具链
 
-本文记录当前真实栅格工具链的输入输出、职责边界和扩展点。
+本文记录当前真实工具链的输入输出、职责边界和扩展点。
 
 ## 总体流程
 
@@ -16,7 +16,11 @@ create_workspace
    -> clip_raster_to_aoi
 -> calculate_raster_index
 -> render_index_preview
+-> export_metadata
+-> generate_final_answer
 ```
+
+这些工具目前可以单独调用和测试；完整 LangGraph workflow 接入仍在后续阶段。
 
 ## Workspace
 
@@ -121,17 +125,13 @@ RasterScenePlanResult(
 - 贡献接近时优先云量更低的 scene
 - 输出 coverage diagnostics，供 agent validator / adjuster 使用
 
-如果 scene plan 的 coverage 低于 `min_coverage_ratio`，`prepare_raster_inputs`
-会在下载前短路返回 diagnostics，不再执行 download、mosaic 和 clip。
-后续由 agent validator / adjuster 决定是否扩大日期或小幅放宽云量后重试。
+如果 scene plan 的 coverage 低于 `min_coverage_ratio`，`prepare_raster_inputs` 会在下载前短路返回 diagnostics，不再执行 download、mosaic 和 clip。后续由 agent validator / adjuster 决定是否扩大日期或小幅放宽云量后重试。
 
 详细算法演进见 [Scene 选择算法迭代](scene-selection-evolution.md)。
 
 ## Download
 
-`download_raster_assets` 根据 scene plan 中的 asset URL 下载 GeoTIFF。
-
-它不负责选择 scene，只执行下载计划。
+`download_raster_assets` 根据 scene plan 中的 asset URL 下载 GeoTIFF。它不负责选择 scene，只执行下载计划。
 
 输出会按 band 汇总下载路径。
 
@@ -145,7 +145,7 @@ RasterScenePlanResult(
 - 适合先跑通 V1
 - 不需要一次性把同一 band 的所有影像读入内存计算 median
 
-后续如需更高质量合成，可扩展 median / percentile 策略。
+后续如需更高质量合成，可扩展 median / percentile 等策略。
 
 ## Clip
 
@@ -197,7 +197,7 @@ RasterPrepareResult(
 
 ## Index Calculation
 
-`calculate_raster_index` 从 `clipped_raster/` 中读取 band GeoTIFF，根据 registry 传入的公式计算指数。
+`calculate_raster_index` 从 `clipped_raster/` 读取 band GeoTIFF，根据 registry 传入的公式计算指数。
 
 输出：
 
@@ -215,9 +215,49 @@ data/<uuid>/output/ndvi.tif
 data/<uuid>/output/ndvi_preview.png
 ```
 
+## Metadata Export
+
+`export_metadata` 将 workflow metadata 导出为 JSON。
+
+输入：
+
+```python
+MetadataExportRequest(
+    workspace_dir=Path("data/<uuid>"),
+    metadata={...},
+)
+```
+
+输出：
+
+```text
+data/<uuid>/output/metadata.json
+```
+
+JSON 顶层包含：
+
+```json
+{
+  "schema_version": "1.0",
+  "exported_at": "...",
+  "metadata": {}
+}
+```
+
+## Final Answer
+
+`generate_final_answer` 负责生成最终面向用户的回答。
+
+它支持两种模式：
+
+- `metadata_summary`：根据用户原始需求和 workflow metadata 生成结果说明
+- `direct_answer`：对不相关问题、普通问答或当前未支持产品进行直接回答
+
+测试通过 fake client 注入 LLM 响应，真实运行时读取智谱环境变量。
+
 ## 未来扩展：成品栅格产品
 
-未来人口、土地覆盖、夜光、DEM 等成品栅格产品不需要 scene plan。
+未来人口、土地覆盖、夜光、DEM 等成品栅格产品不一定需要 scene plan。
 
 可以在 `raster_prepare` 内部新增与 `scene_plan` 平行的：
 

@@ -70,7 +70,7 @@ TOOL_CONTRACTS: list[dict[str, Any]] = [
     {
         "tool": "metadata.export_metadata",
         "purpose": "Export run metadata for auditing and final answer generation.",
-        "inputs": ["workspace_dir"],
+        "inputs": ["workspace_dir", "metadata"],
         "outputs": ["tool_results.metadata.metadata_path", "metadata"],
     },
     {
@@ -284,7 +284,8 @@ def _build_planner_messages(request: AgentPlanRequest) -> list[dict[str, str]]:
         "输入 workspace_dir、index_name；输出 index_tif_path。\n"
         "- render_preview.render_index_preview：渲染指数预览图；"
         "输入 index_name、index_tif_path；输出 preview_path。\n"
-        "- metadata.export_metadata：导出任务元数据；输入 workspace_dir；"
+        "- metadata.export_metadata：导出任务元数据；"
+        "输入 workspace_dir、metadata；"
         "输出 metadata_path 和 metadata。\n"
         "- answer.generate_final_answer：生成最终回答；"
         "metadata_summary 模式使用 user_query 和 metadata，direct_answer 模式使用 question。\n\n"
@@ -515,6 +516,7 @@ def _canonical_tool_params(tool_name: str, plan: dict[str, Any]) -> dict[str, An
     if tool_name == "metadata.export_metadata":
         return {
             "workspace_dir": "$workspace.workspace_dir",
+            "metadata": "$metadata",
         }
 
     if tool_name == "answer.generate_final_answer":

@@ -66,6 +66,10 @@ def test_build_agent_plan_with_fake_client():
         "user_query": "$state.user_query",
         "metadata": "$metadata",
     }
+    assert result.tool_calls[4]["params"] == {
+        "workspace_dir": "$workspace.workspace_dir",
+        "metadata": "$metadata",
+    }
     assert result.rationale == "User asks for an NDVI map of Chengdu."
     assert update["status"] == "planned"
     assert update["plan"]["index_name"] == "NDVI"

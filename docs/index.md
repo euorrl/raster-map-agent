@@ -1,6 +1,6 @@
 # Raster Map Agent
 
-Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。它的目标不是只写一个遥感处理脚本，而是逐步构建一个可以理解用户需求、准备空间数据、生成地图产品并解释结果的本地 Agent。
+Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。它的目标不是只写一个遥感处理脚本，而是逐步构建一个能够理解用户需求、准备空间数据、生成地图产品并解释结果的本地 Agent。
 
 ## 当前 V1 目标
 
@@ -14,7 +14,8 @@ V1 聚焦一个可落地的本地流程：
 -> raster_prepare 准备真实 Sentinel-2 输入数据
 -> index_calculation 计算 NDVI/NDWI
 -> render_preview 生成 PNG 预览图
--> metadata / answer 输出结果说明
+-> metadata 导出 JSON
+-> answer 生成最终说明
 ```
 
 当前真实工具链已经完成到：
@@ -29,17 +30,17 @@ workspace
 -> AOI clip
 -> index GeoTIFF
 -> preview PNG
+-> metadata JSON
+-> final answer
 ```
 
-Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 policy
-注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证
-LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
+Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 policy 注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证 LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
 
 ## 当前架构重点
 
 ### 动态 AgentState
 
-`AgentState` 已经从早期扁平字段调整为动态分区结构：
+`AgentState` 采用动态分区结构：
 
 ```text
 user_query
@@ -54,14 +55,14 @@ errors
 warnings
 ```
 
-其中 `runtime` 是运行时控制分区，用于保存 retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态。
+其中 `runtime` 是运行时控制分区，用于保存 planner 结果、tool plan、retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态。
 
 ### 工具层与 Agent 层分离
 
-项目刻意保持工具层纯净：
+项目刻意保持边界：
 
 - `tools/` 负责确定性的领域能力
-- `agent/` 负责计划、验证、调整、路由和恢复策略
+- `agent/` 负责规划、验证、调整、路由和恢复策略
 
 因此 `raster_prepare` 不直接内置 LLM ReAct。当前局部 ReAct 的基础已经放在 agent 层：
 
@@ -75,10 +76,7 @@ zhipu global planner
 -> runtime retry count
 ```
 
-planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。
-`state.plan` 只保留 AOI、指数、日期和云量这类核心业务参数；工具链顺序写入
-`runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮
-参数建议，policy 负责限制最多重试 5 次。
+planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。`state.plan` 只保留 response mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序写入 `runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，policy 负责限制最大重试 5 次。
 
 ## 主要文档
 
