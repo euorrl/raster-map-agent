@@ -12,7 +12,6 @@ from app.agent.validators import (
 )
 from app.schemas import AgentState
 
-
 ValidatorFn = Callable[[AgentState], Any]
 ValidationUpdateBuilder = Callable[[Any], dict[str, Any]]
 AdjusterFn = Callable[..., Any]
@@ -84,9 +83,7 @@ def build_retry_exhausted_update(state: AgentState, tool_name: str) -> dict[str,
     retry_count = get_tool_retry_count(state, tool_name)
     return {
         "status": "failed",
-        "errors": [
-            f"{tool_name} reached retry limit after {retry_count} retries."
-        ],
+        "errors": [f"{tool_name} reached retry limit after {retry_count} retries."],
         "runtime": {
             "retry_exhausted": {
                 tool_name: {

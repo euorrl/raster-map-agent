@@ -76,9 +76,7 @@ def test_build_retry_exhausted_update_records_runtime_context():
     update = build_retry_exhausted_update(state, "raster_prepare")
 
     assert update["status"] == "failed"
-    assert update["errors"] == [
-        "raster_prepare reached retry limit after 5 retries."
-    ]
+    assert update["errors"] == ["raster_prepare reached retry limit after 5 retries."]
     assert update["runtime"]["retry_exhausted"]["raster_prepare"] == {
         "retry_count": 5,
         "max_retries": 5,

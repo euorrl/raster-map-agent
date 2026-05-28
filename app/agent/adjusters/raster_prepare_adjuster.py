@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from app.schemas import AgentState
 from app.utils import get_zhipuai_settings
 
-
 RasterPrepareAdjustmentStatus = Literal["adjusted", "skipped", "failed"]
 LLMClient = Callable[[list[dict[str, str]]], str]
 MAX_CLOUD_COVER_LIMIT = 30.0
