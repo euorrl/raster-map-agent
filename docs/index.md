@@ -34,7 +34,7 @@ workspace
 -> final answer
 ```
 
-Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 policy 注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证 LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
+Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 tool rules 注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证 LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
 
 ## 当前架构重点
 
@@ -72,11 +72,11 @@ zhipu global planner
 -> runtime.tool_plan
 -> raster_prepare validator
 -> raster_prepare adjuster
--> policy registry
+-> tool rules registry
 -> runtime retry count
 ```
 
-planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。`state.plan` 只保留 response mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序写入 `runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，policy 负责限制最大重试 5 次。
+planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。`state.plan` 只保留 response mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序写入 `runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，tool rules 负责限制最大重试 5 次。
 
 ## 主要文档
 

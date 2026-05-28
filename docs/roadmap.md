@@ -19,7 +19,7 @@ Agent 基础：
 - `runtime` 运行时控制分区
 - 智谱全局 planner
 - `response_mode`：`raster_workflow` / `direct_answer`
-- agent validator / adjuster / policy 注册表
+- agent validator / adjuster / tool rules 注册表
 
 工具链：
 

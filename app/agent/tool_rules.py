@@ -19,11 +19,11 @@ AdjustmentUpdateBuilder = Callable[[AgentState, Any], dict[str, Any]]
 
 
 @dataclass(frozen=True)
-class AgentToolPolicy:
-    """Agent 层工具治理策略。
+class ToolRule:
+    """Agent 层工具后处理规则。
 
-    policy 不负责执行工具本身，只声明工具运行后应该由哪个 validator
-    检查、可重试时由哪个 adjuster 调参，以及最多允许重试几次。
+    ToolRule 不执行工具本身，只声明某个工具运行后是否需要 validator
+    验收、可恢复失败时是否允许 adjuster 调参，以及最多允许重试几次。
     """
 
     tool_name: str
@@ -35,8 +35,8 @@ class AgentToolPolicy:
     retryable_status: str = "retryable"
 
 
-AGENT_TOOL_POLICIES: dict[str, AgentToolPolicy] = {
-    "raster_prepare": AgentToolPolicy(
+TOOL_RULES: dict[str, ToolRule] = {
+    "raster_prepare": ToolRule(
         tool_name="raster_prepare",
         validator=validate_raster_prepare_result,
         validation_update_builder=build_raster_prepare_validation_update,
@@ -47,13 +47,13 @@ AGENT_TOOL_POLICIES: dict[str, AgentToolPolicy] = {
 }
 
 
-def get_agent_tool_policy(tool_name: str) -> AgentToolPolicy:
-    """根据工具名读取 Agent policy。"""
+def get_tool_rule(tool_name: str) -> ToolRule:
+    """根据工具结果名读取后处理规则。"""
 
     try:
-        return AGENT_TOOL_POLICIES[tool_name]
+        return TOOL_RULES[tool_name]
     except KeyError as error:
-        raise ValueError(f"Unsupported agent tool policy: {tool_name}") from error
+        raise ValueError(f"Unsupported tool rule: {tool_name}") from error
 
 
 def get_tool_retry_count(state: AgentState, tool_name: str) -> int:
@@ -66,15 +66,15 @@ def get_tool_retry_count(state: AgentState, tool_name: str) -> int:
 def can_retry_tool(state: AgentState, tool_name: str) -> bool:
     """判断某个工具当前是否还能进入 adjuster 重试。"""
 
-    policy = get_agent_tool_policy(tool_name)
+    rule = get_tool_rule(tool_name)
     validators = state.runtime.get("validators", {})
     validation = validators.get(tool_name, {})
     if not isinstance(validation, dict):
         return False
-    if validation.get("status") != policy.retryable_status:
+    if validation.get("status") != rule.retryable_status:
         return False
 
-    return get_tool_retry_count(state, tool_name) < policy.max_retries
+    return get_tool_retry_count(state, tool_name) < rule.max_retries
 
 
 def build_retry_exhausted_update(state: AgentState, tool_name: str) -> dict[str, Any]:
@@ -88,7 +88,7 @@ def build_retry_exhausted_update(state: AgentState, tool_name: str) -> dict[str,
             "retry_exhausted": {
                 tool_name: {
                     "retry_count": retry_count,
-                    "max_retries": get_agent_tool_policy(tool_name).max_retries,
+                    "max_retries": get_tool_rule(tool_name).max_retries,
                 }
             }
         },

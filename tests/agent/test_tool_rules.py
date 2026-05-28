@@ -3,7 +3,7 @@ import pytest
 from app.agent.tool_rules import (
     build_retry_exhausted_update,
     can_retry_tool,
-    get_agent_tool_policy,
+    get_tool_rule,
     get_tool_retry_count,
 )
 from app.agent.adjusters import adjust_raster_prepare_plan
@@ -11,18 +11,18 @@ from app.agent.validators import validate_raster_prepare_result
 from app.schemas import AgentState
 
 
-def test_get_agent_tool_policy_returns_raster_prepare_policy():
-    policy = get_agent_tool_policy("raster_prepare")
+def test_get_tool_rule_returns_raster_prepare_rule():
+    rule = get_tool_rule("raster_prepare")
 
-    assert policy.tool_name == "raster_prepare"
-    assert policy.validator is validate_raster_prepare_result
-    assert policy.adjuster is adjust_raster_prepare_plan
-    assert policy.max_retries == 5
+    assert rule.tool_name == "raster_prepare"
+    assert rule.validator is validate_raster_prepare_result
+    assert rule.adjuster is adjust_raster_prepare_plan
+    assert rule.max_retries == 5
 
 
-def test_get_agent_tool_policy_rejects_unknown_tool():
-    with pytest.raises(ValueError, match="Unsupported agent tool policy"):
-        get_agent_tool_policy("unknown_tool")
+def test_get_tool_rule_rejects_unknown_tool():
+    with pytest.raises(ValueError, match="Unsupported tool rule"):
+        get_tool_rule("unknown_tool")
 
 
 def test_can_retry_tool_requires_retryable_validation_status():
