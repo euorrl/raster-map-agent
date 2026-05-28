@@ -2,6 +2,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.agent.planners import build_agent_plan, build_agent_plan_update
+from app.agent.validators import (
+    build_raster_prepare_validation_update,
+    validate_raster_prepare_result,
+)
 from app.registry import resolve_raster_product_config
 from app.schemas import AgentState
 from app.tools.index_calculation import (
@@ -14,25 +19,8 @@ from app.tools.workspace import WorkspaceRequest, create_workspace
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
-    plan = {
-        "product_type": "vegetation_distribution_map",
-        "index_name": "NDVI",
-        "data_source": "sentinel2",
-        "aoi_query": "Chengdu, Sichuan, China",
-        "aoi_name": "Chengdu",
-        "start_date": "2024-06-01",
-        "end_date": "2024-08-31",
-        "max_cloud_cover": 30,
-        "recovery_policy": {
-            "allow_raster_prepare_retry": True,
-            "max_raster_prepare_attempts": 2,
-        },
-    }
-    return {
-        "plan": plan,
-        "metadata": {"plan": plan},
-        "status": "planned",
-    }
+    result = build_agent_plan(state.user_query)
+    return build_agent_plan_update(result)
 
 
 def registry_node(state: AgentState) -> dict[str, Any]:
@@ -46,9 +34,10 @@ def registry_node(state: AgentState) -> dict[str, Any]:
         "required_bands": product_config.required_bands,
         "band_roles": product_config.band_roles,
         "index_formula": product_config.index_formula,
+        "render_config": product_config.render_config.model_dump(mode="json"),
     }
     return {
-        "plan": registry_result,
+        "runtime": {"registry": {"raster_product": registry_result}},
         "metadata": {"registry": registry_result},
     }
 
@@ -74,12 +63,13 @@ def raster_prepare_node(state: AgentState) -> dict[str, Any]:
     if not workspace_dir:
         return {"errors": ["Workspace is missing."], "status": "failed"}
 
+    raster_product = _get_registry_raster_product(state)
     try:
         result = prepare_raster_inputs(
             RasterPrepareRequest(
                 aoi_query=state.plan["aoi_query"],
                 index_name=state.plan["index_name"],
-                data_source=state.plan["data_source"],
+                data_source=raster_product["data_source"],
                 start_date=state.plan["start_date"],
                 end_date=state.plan["end_date"],
                 max_cloud_cover=state.plan.get("max_cloud_cover", 30),
@@ -100,26 +90,8 @@ def raster_prepare_node(state: AgentState) -> dict[str, Any]:
 
 
 def raster_prepare_validator_node(state: AgentState) -> dict[str, Any]:
-    errors = []
-    raster_prepare_result = state.tool_results.get("raster_prepare", {})
-    required_bands = state.plan.get("required_bands", [])
-    band_paths = raster_prepare_result.get("band_paths", {})
-    diagnostics = raster_prepare_result.get("diagnostics", {})
-
-    if not required_bands:
-        errors.append("Required bands are missing.")
-
-    missing_bands = [band for band in required_bands if band not in band_paths]
-    if missing_bands:
-        errors.append(f"Band paths are missing for: {', '.join(missing_bands)}.")
-
-    if diagnostics.get("coverage_status") not in {"covered", None}:
-        errors.append("Raster prepare coverage is not sufficient.")
-
-    if errors:
-        return {"errors": errors, "status": "failed"}
-
-    return {"errors": [], "status": "raster_prepared"}
+    result = validate_raster_prepare_result(state)
+    return build_raster_prepare_validation_update(result)
 
 
 def product_generation_node(state: AgentState) -> dict[str, Any]:
@@ -127,13 +99,14 @@ def product_generation_node(state: AgentState) -> dict[str, Any]:
     if not workspace_dir:
         return {"errors": ["Workspace is missing."], "status": "failed"}
 
+    raster_product = _get_registry_raster_product(state)
     try:
         index_result_model = calculate_raster_index(
             IndexCalculationRequest(
                 workspace_dir=Path(workspace_dir),
-                index_name=state.plan["index_name"],
-                band_roles=state.plan["band_roles"],
-                index_formula=state.plan["index_formula"],
+                index_name=raster_product["index_name"],
+                band_roles=raster_product["band_roles"],
+                index_formula=raster_product["index_formula"],
             )
         )
         preview_result_model = render_index_preview(
@@ -216,3 +189,18 @@ def _export_metadata(
         encoding="utf-8",
     )
     return {"metadata_path": str(metadata_path)}
+
+
+def _get_registry_raster_product(state: AgentState) -> dict[str, Any]:
+    registry = state.runtime.get("registry", {})
+    raster_product = {}
+    if isinstance(registry, dict):
+        raster_product = registry.get("raster_product", {})
+
+    if not raster_product:
+        raster_product = state.metadata.get("registry", {})
+
+    if isinstance(raster_product, dict):
+        return raster_product
+
+    return {}

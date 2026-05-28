@@ -1,9 +1,10 @@
 import numpy as np
 import pytest
-import rasterio
-from rasterio.transform import from_origin
 
-from app.tools.index_calculation import (
+rasterio = pytest.importorskip("rasterio")
+from rasterio.transform import from_origin  # noqa: E402
+
+from app.tools.index_calculation import (  # noqa: E402
     IndexCalculationError,
     IndexCalculationRequest,
     calculate_raster_index,

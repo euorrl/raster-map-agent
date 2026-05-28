@@ -44,8 +44,12 @@ def validate_raster_prepare_result(
     if not prepare_result:
         return _failed(["missing_raster_prepare_result"])
 
+    raster_product = _get_registry_raster_product(state)
     required_bands = (
-        state.plan.get("required_bands") or prepare_result.get("required_bands") or []
+        raster_product.get("required_bands")
+        or prepare_result.get("required_bands")
+        or state.plan.get("required_bands")
+        or []
     )
     if not required_bands:
         return _failed(["missing_required_bands"])
@@ -122,6 +126,15 @@ def _as_dict(value: Any) -> dict[str, Any]:
         return value.model_dump(mode="json")
 
     return {}
+
+
+def _get_registry_raster_product(state: AgentState) -> dict[str, Any]:
+    registry = _as_dict(state.runtime.get("registry"))
+    raster_product = _as_dict(registry.get("raster_product"))
+    if raster_product:
+        return raster_product
+
+    return _as_dict(state.metadata.get("registry"))
 
 
 def _failed(reasons: list[str]) -> RasterPrepareValidationResult:

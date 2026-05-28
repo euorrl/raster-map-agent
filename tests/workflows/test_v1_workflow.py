@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.agent.nodes import answer_node
+from app.agent.planners import AgentPlanResult
 from app.schemas import AgentState
 from app.tools.index_calculation import IndexCalculationResult
 from app.tools.raster_prepare import RasterPrepareResult, RasterScenePlanDiagnostics
@@ -16,6 +17,21 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
     import app.agent.nodes as nodes
 
     workspace_dir = tmp_path / "mock_run"
+
+    def fake_build_agent_plan(user_query):
+        return AgentPlanResult(
+            status="planned",
+            plan={
+                "route": "raster_product_generate",
+                "answer_mode": "metadata_summary",
+                "aoi_query": "Milan, Lombardy, Italy",
+                "index_name": "NDVI",
+                "start_date": "2024-06-01",
+                "end_date": "2024-08-31",
+                "max_cloud_cover": 20,
+            },
+            rationale="Mock planner result.",
+        )
 
     def fake_create_workspace(request):
         workspace_dir.mkdir()
@@ -62,6 +78,7 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
             preview_path=str(workspace_dir / "output" / "ndvi_preview.png")
         )
 
+    monkeypatch.setattr(nodes, "build_agent_plan", fake_build_agent_plan)
     monkeypatch.setattr(nodes, "create_workspace", fake_create_workspace)
     monkeypatch.setattr(nodes, "prepare_raster_inputs", fake_prepare_raster_inputs)
     monkeypatch.setattr(nodes, "calculate_raster_index", fake_calculate_raster_index)
@@ -71,7 +88,11 @@ def test_v1_workflow_completes_real_tool_nodes_with_patched_tools(
 
     assert state.status == "completed"
     assert state.plan["index_name"] == "NDVI"
-    assert state.plan["required_bands"] == ["B04", "B08"]
+    assert "required_bands" not in state.plan
+    assert state.runtime["registry"]["raster_product"]["required_bands"] == [
+        "B04",
+        "B08",
+    ]
     assert state.workspace["workspace_dir"] == str(workspace_dir)
     assert state.tool_results["raster_prepare"]["band_paths"]
     assert state.tool_results["index_calculation"]["index_tif_path"]

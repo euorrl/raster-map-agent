@@ -2,15 +2,19 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import rasterio
-from rasterio.transform import from_origin
 
-from app.tools.render_preview import (
+rasterio = pytest.importorskip("rasterio")
+from rasterio.transform import from_origin  # noqa: E402
+
+from app.tools.render_preview import (  # noqa: E402
     RenderPreviewError,
     RenderPreviewRequest,
     render_index_preview,
 )
-from app.tools.render_preview.render import _apply_colormap, _get_preview_shape
+from app.tools.render_preview.render import (  # noqa: E402
+    _apply_colormap,
+    _get_preview_shape,
+)
 
 
 def test_render_preview_request_uses_index_tif_parent_as_output_dir(tmp_path):
