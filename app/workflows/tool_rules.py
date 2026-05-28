@@ -87,9 +87,7 @@ def build_retry_exhausted_update(
     retry_count = get_tool_retry_count(state, tool_call_id)
     return {
         "status": "failed",
-        "errors": [
-            f"{tool_call_id} reached retry limit after {retry_count} retries."
-        ],
+        "errors": [f"{tool_call_id} reached retry limit after {retry_count} retries."],
         "runtime": {
             "retry_exhausted": {
                 tool_call_id: {

@@ -53,9 +53,7 @@ def test_compile_raster_product_tool_calls_uses_plan_and_registry_params():
         "red": "B04",
         "nir": "B08",
     }
-    assert index_calculation["params"]["index_formula"] == (
-        "(nir - red) / (nir + red)"
-    )
+    assert index_calculation["params"]["index_formula"] == ("(nir - red) / (nir + red)")
     assert tool_calls[4]["params"] == {
         "workspace_dir": "$state.workspace.workspace_dir",
         "workflow_state": "$state",

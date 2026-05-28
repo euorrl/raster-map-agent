@@ -73,6 +73,55 @@ TOOL_SPECS: dict[str, ToolSpec] = {
 }
 
 
+def execute_current_tool_call(
+    state: AgentState,
+    tool_specs: dict[str, ToolSpec] | None = None,
+) -> AgentState:
+    """执行当前 state.runtime.current_tool_index 指向的单个 tool_call。"""
+
+    specs = tool_specs or TOOL_SPECS
+    current_state = AgentState.model_validate(state.model_dump(mode="json"))
+    index = int(current_state.runtime.get("current_tool_index", 0))
+
+    if index >= len(current_state.tool_calls):
+        return _apply_update(
+            current_state,
+            {
+                "status": "no_more_tools",
+            },
+        )
+
+    raw_tool_call = current_state.tool_calls[index]
+    tool_call = ToolCall.model_validate(raw_tool_call)
+    executed_call_ids = [
+        ToolCall.model_validate(item).id for item in current_state.tool_calls[:index]
+    ]
+    _ensure_dependencies_are_done(tool_call, executed_call_ids)
+
+    spec = _get_tool_spec(specs, tool_call.tool_name)
+    params = _resolve_state_references(tool_call.params, current_state)
+    request = spec.request_model.model_validate(params)
+    result = spec.tool_fn(request)
+    result_data = _dump_result(result)
+
+    update = _build_tool_result_update(tool_call, spec, result_data)
+    update = merge_dicts(
+        update,
+        {
+            "runtime": {
+                "last_tool_index": index,
+                "last_tool_call_id": tool_call.id,
+                "last_tool_name": tool_call.tool_name,
+                "current_tool_index": index + 1,
+            },
+        },
+    )
+    if "status" not in update:
+        update["status"] = "tool_executed"
+
+    return _apply_update(current_state, update)
+
+
 def execute_tool_calls(
     state: AgentState,
     tool_specs: dict[str, ToolSpec] | None = None,
@@ -83,19 +132,11 @@ def execute_tool_calls(
     current_state = AgentState.model_validate(state.model_dump(mode="json"))
     executed_call_ids: list[str] = []
 
-    for raw_tool_call in state.tool_calls:
-        tool_call = ToolCall.model_validate(raw_tool_call)
-        _ensure_dependencies_are_done(tool_call, executed_call_ids)
-        spec = _get_tool_spec(specs, tool_call.tool_name)
-
-        params = _resolve_state_references(tool_call.params, current_state)
-        request = spec.request_model.model_validate(params)
-        result = spec.tool_fn(request)
-        result_data = _dump_result(result)
-
-        update = _build_tool_result_update(tool_call, spec, result_data)
-        current_state = _apply_update(current_state, update)
-        executed_call_ids.append(tool_call.id)
+    while int(current_state.runtime.get("current_tool_index", 0)) < len(
+        current_state.tool_calls
+    ):
+        current_state = execute_current_tool_call(current_state, specs)
+        executed_call_ids.append(current_state.runtime["last_tool_call_id"])
 
     current_state = _apply_update(
         current_state,
@@ -143,8 +184,7 @@ def _resolve_state_references(value: Any, state: AgentState) -> Any:
 
     if isinstance(value, dict):
         return {
-            key: _resolve_state_references(item, state)
-            for key, item in value.items()
+            key: _resolve_state_references(item, state) for key, item in value.items()
         }
 
     if isinstance(value, list):

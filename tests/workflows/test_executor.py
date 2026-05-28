@@ -1,5 +1,7 @@
 import pytest
 
+from pydantic import BaseModel
+
 from app.schemas import AgentState
 from app.tools.answer import FinalAnswerRequest, FinalAnswerResult
 from app.tools.index_calculation import IndexCalculationRequest, IndexCalculationResult
@@ -15,6 +17,7 @@ from app.workflows.compiler import compile_tool_calls
 from app.workflows.executor import (
     ToolExecutionError,
     ToolSpec,
+    execute_current_tool_call,
     execute_tool_calls,
 )
 
@@ -47,6 +50,100 @@ def test_execute_direct_answer_tool_call_with_injected_tool():
     assert result.final_answer == "Remote sensing answer."
     assert result.status == "completed"
     assert result.runtime["executor"]["executed_tool_calls"] == ["answer"]
+
+
+def test_execute_current_tool_call_executes_single_tool_and_advances_index():
+    class DummyRequest(BaseModel):
+        value: str
+
+    class DummyResult(BaseModel):
+        output: str
+
+    def fake_dummy(request):
+        assert isinstance(request, DummyRequest)
+        return DummyResult(output=request.value.upper())
+
+    state = AgentState(user_query="hello world", runtime={"current_tool_index": 0})
+    state.tool_calls = [
+        {
+            "id": "dummy",
+            "tool_name": "dummy.execute",
+            "params": {"value": "hello"},
+            "result_key": "dummy",
+        }
+    ]
+
+    result = execute_current_tool_call(
+        state,
+        tool_specs={
+            "dummy.execute": ToolSpec(
+                tool_name="dummy.execute",
+                request_model=DummyRequest,
+                tool_fn=fake_dummy,
+            )
+        },
+    )
+
+    assert result.tool_results["dummy"]["output"] == "HELLO"
+    assert result.runtime["current_tool_index"] == 1
+    assert result.runtime["last_tool_index"] == 0
+    assert result.runtime["last_tool_call_id"] == "dummy"
+    assert result.runtime["last_tool_name"] == "dummy.execute"
+    assert result.status == "tool_executed"
+
+
+def test_execute_current_tool_call_resolves_state_references():
+    class DummyRequest(BaseModel):
+        question: str
+
+    class DummyResult(BaseModel):
+        answer: str
+
+    def fake_dummy(request):
+        assert isinstance(request, DummyRequest)
+        return DummyResult(answer=request.question)
+
+    state = AgentState(
+        user_query="Why is the sky blue?", runtime={"current_tool_index": 0}
+    )
+    state.tool_calls = [
+        {
+            "id": "dummy",
+            "tool_name": "dummy.execute",
+            "params": {"question": "$state.user_query"},
+            "result_key": "dummy",
+        }
+    ]
+
+    result = execute_current_tool_call(
+        state,
+        tool_specs={
+            "dummy.execute": ToolSpec(
+                tool_name="dummy.execute",
+                request_model=DummyRequest,
+                tool_fn=fake_dummy,
+            )
+        },
+    )
+
+    assert result.tool_results["dummy"]["answer"] == "Why is the sky blue?"
+    assert result.runtime["current_tool_index"] == 1
+
+
+def test_execute_current_tool_call_returns_no_more_tools_when_index_out_of_range():
+    state = AgentState(user_query="no more", runtime={"current_tool_index": 1})
+    state.tool_calls = [
+        {
+            "id": "dummy",
+            "tool_name": "dummy.execute",
+            "params": {"value": "hello"},
+            "result_key": "dummy",
+        }
+    ]
+
+    result = execute_current_tool_call(state)
+
+    assert result.status == "no_more_tools"
 
 
 def test_execute_raster_product_tool_calls_with_injected_tools(tmp_path):
@@ -103,10 +200,9 @@ def test_execute_raster_product_tool_calls_with_injected_tools(tmp_path):
         assert isinstance(request, MetadataExportRequest)
         workflow_state = request.workflow_state
         assert workflow_state["tool_results"]["raster_prepare"]["index_name"] == "NDVI"
-        assert (
-            workflow_state["tool_results"]["index_calculation"]["index_tif_path"]
-            == str(workspace_dir / "output" / "ndvi.tif")
-        )
+        assert workflow_state["tool_results"]["index_calculation"][
+            "index_tif_path"
+        ] == str(workspace_dir / "output" / "ndvi.tif")
         return MetadataExportResult(
             metadata_path=str(workspace_dir / "output" / "metadata.json"),
             product_info={"product": {"type": "index", "name": "NDVI"}},

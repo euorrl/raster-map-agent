@@ -122,9 +122,7 @@ def _build_product_method(
     raster_product: dict[str, Any],
     plan: dict[str, Any],
 ) -> dict[str, Any]:
-    formula = raster_prepare.get("index_formula") or raster_product.get(
-        "index_formula"
-    )
+    formula = raster_prepare.get("index_formula") or raster_product.get("index_formula")
     method_name = (
         raster_prepare.get("method")
         or raster_product.get("method")

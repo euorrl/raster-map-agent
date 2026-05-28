@@ -126,9 +126,9 @@ def test_build_product_info_reads_spatial_profile_from_product_tif(tmp_path):
         dataset.write(numpy.ones((2, 3), dtype="float32"), 1)
 
     workflow_state = _build_workflow_state(tmp_path)
-    workflow_state["tool_results"]["index_calculation"][
-        "index_tif_path"
-    ] = str(product_tif_path)
+    workflow_state["tool_results"]["index_calculation"]["index_tif_path"] = str(
+        product_tif_path
+    )
 
     product_info = build_product_info(workflow_state)
 

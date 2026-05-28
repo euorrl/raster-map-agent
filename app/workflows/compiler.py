@@ -44,10 +44,11 @@ def build_tool_calls_update(state: AgentState) -> dict[str, Any]:
     return {
         "tool_calls": tool_calls,
         "runtime": {
+            "current_tool_index": 0,
             "compiler": {
                 "route": route,
                 "tool_call_count": len(tool_calls),
-            }
+            },
         },
     }
 
