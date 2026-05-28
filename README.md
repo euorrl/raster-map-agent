@@ -1,44 +1,64 @@
 # Raster Map Agent
 
-一个自然语言驱动的遥感制图 Agent 项目。
+Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。当前目标是完成一个本地可运行的 V1：用户输入地图需求后，系统能够准备真实 Sentinel-2 栅格数据，计算 NDVI/NDWI 等指数，渲染预览图，并逐步接入 LangGraph Agent workflow。
 
-当前目标是完成本地可运行的 V1 Agent：用户输入自然语言请求后，系统能够准备真实 Sentinel-2 数据，计算指数，渲染预览，并生成最终回答。
+## 当前进展
 
-## 当前状态
+已经完成：
 
-已完成：
-
-- Python 项目骨架、测试、格式化、CI
+- Python 项目骨架、测试、格式化、CI 和 MkDocs 文档配置
+- 动态 `AgentState` 设计
 - mock LangGraph workflow
-- AOI 解析
-- Sentinel-2 scene plan
-- coverage diagnostics
-- raster download
-- first mosaic by band
-- AOI clip
-- raster prepare pipeline
+- workspace 创建工具
+- Sentinel-2 栅格数据准备链条
+- NDVI/NDWI 指数计算工具
+- 指数 GeoTIFF 预览渲染工具
+- agent 层 raster_prepare validator、智谱 adjuster 与 policy 注册表
 
-当前数据准备链条已经能输出后续 NDVI 计算需要的裁剪后 B04/B08 GeoTIFF。
-
-下一步重点：
+当前真实工具链已经可以产出：
 
 ```text
-clipped B04 + clipped B08
--> NDVI GeoTIFF
--> preview PNG
--> metadata
--> Agent answer
+data/<uuid>/clipped_raster/<band>_clipped.tif
+data/<uuid>/output/<index>.tif
+data/<uuid>/output/<index>_preview.png
 ```
+
+当前 `v1_workflow.py` 仍是 mock workflow；真实工具接入 Agent 的工作在后续分支中完成。
+
+## 本地环境变量
+
+真实密钥只放在本地 `.env`，不要提交。`.env.example` 保留字段模板：
+
+```env
+ZHIPUAI_API_KEY=
+ZHIPUAI_MODEL=glm-4.7-flash
+ZHIPUAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+DATA_DIR=./data
+```
+
+`raster_prepare` adjuster 会通过这些配置调用智谱模型。测试中使用 fake client，不依赖真实网络和 API key。
 
 ## 项目结构
 
-- `app/`：项目源代码
-- `tests/`：测试代码
-- `scripts/`：本地调试脚本
-- `docs/`：项目笔记和设计文档
-- `data/`：本地临时数据
-- `data/<uuid>/output/`：单次任务的最终输出结果
+```text
+app/
+  agent/                 # LangGraph 节点、validator、adjuster、policy
+  registry/              # 指数、数据源、渲染配置注册表
+  schemas/               # AgentState
+  tools/                 # 可独立运行的领域工具
+  workflows/             # LangGraph workflow builder
+docs/                    # MkDocs / ReadTheDocs 文档
+scripts/                 # 本地调试脚本
+tests/                   # 单元测试
+data/                    # 本地运行产生的任务数据，不进入 git
+```
 
 ## 文档
 
-详细设计记录见 `docs/`，可通过 MkDocs / Read the Docs 构建。
+详细设计见 `docs/`：
+
+- `docs/architecture.md`
+- `docs/raster-toolchain.md`
+- `docs/design-decisions.md`
+- `docs/development-log.md`
+- `docs/roadmap.md`

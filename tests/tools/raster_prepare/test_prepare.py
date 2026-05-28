@@ -161,6 +161,90 @@ def test_raster_prepare_request_rejects_registry_only_landsat_source(tmp_path):
         )
 
 
+def test_prepare_raster_inputs_returns_early_when_scene_coverage_fails(
+    monkeypatch, tmp_path
+):
+    calls = []
+
+    def fake_resolve_aoi(request):
+        calls.append("aoi")
+        boundary_path = request.workspace_dir / "aoi" / "test.geojson"
+        boundary_path.parent.mkdir(parents=True)
+        boundary_path.write_text("{}", encoding="utf-8")
+        return AOIResult(
+            name="Test AOI",
+            boundary_geojson_path=str(boundary_path),
+            bbox=[0, 0, 2, 2],
+            area_km2=4,
+            source="test",
+        )
+
+    def fake_build_scene_plan(request):
+        calls.append("scene_plan")
+        return RasterScenePlanResult(
+            scene_ids=["scene_1"],
+            assets=[],
+            diagnostics=RasterScenePlanDiagnostics(
+                coverage_status="not_covered",
+                coverage_ratio=0.52,
+                min_coverage_ratio=0.7,
+                is_retriable=True,
+                failure_reason="insufficient_spatial_coverage",
+                message="Selected scenes do not cover enough AOI.",
+                suggested_actions=["expand_date_range"],
+            ),
+            data_source="sentinel2",
+            provider="earth_search",
+            collection="sentinel-2-l2a",
+        )
+
+    def fail_if_called(request):
+        raise AssertionError("download/mosaic/clip should not run")
+
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.prepare.resolve_administrative_aoi",
+        fake_resolve_aoi,
+    )
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.prepare.build_raster_scene_plan",
+        fake_build_scene_plan,
+    )
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.prepare.download_raster_assets",
+        fail_if_called,
+    )
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.prepare.mosaic_rasters_by_band",
+        fail_if_called,
+    )
+    monkeypatch.setattr(
+        "app.tools.raster_prepare.prepare.clip_raster_to_aoi",
+        fail_if_called,
+    )
+
+    workspace_dir = tmp_path / "run_coverage_failed"
+    result = prepare_raster_inputs(
+        RasterPrepareRequest(
+            aoi_query="Test City, Test Country",
+            start_date="2024-01-01",
+            end_date="2024-01-31",
+            max_cloud_cover=20,
+            index_name="NDVI",
+            workspace_dir=workspace_dir,
+        )
+    )
+
+    assert calls == ["aoi", "scene_plan"]
+    assert result.band_paths == {}
+    assert result.scene_ids == ["scene_1"]
+    assert result.output_dir == str(workspace_dir / "output")
+    assert (workspace_dir / "output").exists()
+    assert result.diagnostics.coverage_status == "not_covered"
+    assert result.diagnostics.is_retriable is True
+    assert not (workspace_dir / "raster").exists()
+    assert not (workspace_dir / "mosaic_raster").exists()
+
+
 def test_raster_prepare_request_accepts_ndwi_sentinel2(tmp_path):
     request = RasterPrepareRequest(
         aoi_query="Test City, Test Country",

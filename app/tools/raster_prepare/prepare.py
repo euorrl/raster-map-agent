@@ -60,6 +60,30 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
             min_coverage_ratio=request.min_coverage_ratio,
         )
     )
+    if not _scene_plan_is_acceptable(scene_plan.diagnostics):
+        output_dir = workspace_dir / OUTPUT_DIRNAME
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            "Skipping raster download because scene coverage is not acceptable "
+            "coverage_status=%s coverage_ratio=%s min_coverage_ratio=%s",
+            scene_plan.diagnostics.coverage_status,
+            scene_plan.diagnostics.coverage_ratio,
+            scene_plan.diagnostics.min_coverage_ratio,
+        )
+        return RasterPrepareResult(
+            workspace_dir=str(workspace_dir),
+            output_dir=str(output_dir),
+            boundary_geojson_path=aoi.boundary_geojson_path,
+            index_name=product_config.index_name,
+            data_source=product_config.data_source,
+            required_bands=product_config.required_bands,
+            band_roles=product_config.band_roles,
+            index_formula=product_config.index_formula,
+            band_paths={},
+            scene_ids=scene_plan.scene_ids,
+            diagnostics=scene_plan.diagnostics,
+        )
+
     download_raster_assets(
         RasterDownloadRequest(
             plan=scene_plan,
@@ -120,6 +144,15 @@ def _clip_mosaic_bands(
         band_paths[band] = clip_result.clipped_raster_path
 
     return band_paths
+
+
+def _scene_plan_is_acceptable(diagnostics) -> bool:
+    """判断 scene plan 覆盖率是否足够进入下载阶段。"""
+
+    return (
+        diagnostics.coverage_status == "covered"
+        or diagnostics.coverage_ratio >= diagnostics.min_coverage_ratio
+    )
 
 
 def _remove_intermediate_dirs(workspace_dir: Path, dirnames: list[str]) -> None:
