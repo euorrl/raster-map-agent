@@ -13,15 +13,26 @@ app/
   workflows/
 ```
 
+当前核心原则：
+
+```text
+registry 负责系统支持什么
+planner 负责理解用户想做什么
+workflow/template/rules 负责系统怎么执行
+tools 负责确定性领域计算
+state 负责节点间共享上下文
+```
+
 ## `app/schemas`
 
 保存跨模块共享的数据结构。当前最重要的是 `AgentState`。
 
-`AgentState` 采用“稳定顶层 + 动态分区”的设计：
+`AgentState` 顶层字段：
 
 ```text
 user_query
 plan
+tool_calls
 workspace
 tool_results
 metadata
@@ -35,21 +46,54 @@ warnings
 字段含义：
 
 - `user_query`：用户原始输入
-- `plan`：结构化任务计划，例如 `route`、`answer_mode`、AOI、指数、日期和云量
+- `plan`：planner 生成的结构化用户任务意图
+- `tool_calls`：后续 compiler 生成的工具调用计划
 - `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
 - `tool_results`：各工具的原始返回结果，按工具名分区保存
-- `metadata`：最终记录、导出和回答生成用的元数据分区
-- `runtime`：workflow 运行时控制信息，例如 planner 结果、tool plan、retry 次数、validator 和 adjuster 结果
-- `final_answer`：最终返回给用户的答案
+- `metadata`：最终记录、导出和回答生成使用的元数据
+- `runtime`：workflow 运行时控制信息
+- `final_answer`：最终返回给用户的文本答案
 - `status`：当前 workflow 状态
 - `errors`：追加式错误列表
 - `warnings`：追加式警告列表
 
-`plan`、`workspace`、`tool_results`、`metadata`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 会把它合并进已有 state。
+`plan`、`workspace`、`tool_results`、`metadata`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 或 fallback runner 会把它合并进已有 state。
+
+当前没有单独的 `resolved` 字段。registry 解析结果在过渡期写入：
+
+```python
+state.runtime["registry"]["raster_product"]
+```
+
+后续 compiler 完成后，registry 解析结果会直接进入 `state.tool_calls[*]["params"]`。
+
+## `app/registry`
+
+保存稳定知识和产品能力配置。
+
+当前主要文件：
+
+```text
+app/registry/raster_products.py
+```
+
+当前 registry 包含：
+
+- Sentinel-2 数据源配置
+- Landsat 注册信息
+- NDVI / NDWI 指数配置
+- band roles
+- index formula
+- render config
+- STAC provider / collection / asset mapping
+
+V1 的真实 `raster_prepare` 只执行 Sentinel-2；Landsat 当前是 registry-only 能力。
+
+Registry 不保存 workflow template、tool order、validator、adjuster 或 retry 规则。
 
 ## `app/tools`
 
-真实领域工具层。工具应尽量保持确定性、可单独测试、可离线调用，并且不直接读写 `AgentState`。
+真实领域工具层。工具应保持确定性、可单独测试、可离线调用，并且不直接读写 `AgentState`。
 
 当前工具：
 
@@ -71,43 +115,17 @@ app/tools/answer/
 - `metadata`：将 workflow metadata 导出为 `output/metadata.json`
 - `answer`：通过 LLM 生成最终回答，支持 `metadata_summary` 和 `direct_answer`
 
-注意：`answer` 是 tools 中少数需要 LLM 的工具。它仍被放在工具层，是因为它是最终产物生成器，而不是 planner 或 adjuster 这样的控制组件。测试通过 fake client 注入，不依赖真实 API key。
-
-## `app/registry`
-
-保存稳定知识和配置：
-
-- 数据源配置
-- 指数公式
-- band roles
-- STAC asset 映射
-- 渲染参数
-
-当前主要文件：
-
-```text
-app/registry/raster_products.py
-```
-
-目前 registry 已包含 Sentinel-2、Landsat 的基础配置，以及 NDVI / NDWI 的数据源波段映射。V1 的真实 `raster_prepare` 只执行 Sentinel-2。
+部分 GIS 工具依赖 `rasterio`。包入口采用懒加载，避免仅导入 workflow 或 schema 时强制要求完整 GIS 依赖。
 
 ## `app/agent`
 
-Agent 控制层。它不直接承担 GIS 计算，而是负责：
-
-- LangGraph 节点
-- planner
-- validator
-- adjuster
-- tool rules
-- 后续局部 ReAct
+Agent 控制组件层。它不承载稳定产品知识，也不直接执行 GIS 计算。
 
 当前结构：
 
 ```text
 app/agent/
   nodes.py
-  tool_rules.py
   planners/
     zhipu_planner.py
   validators/
@@ -116,43 +134,55 @@ app/agent/
     raster_prepare_adjuster.py
 ```
 
-全局 planner 负责把自然语言需求转换成受约束的 `state.plan`。工具调用顺序不由 planner 决定，后续由系统根据 `plan.route` 和 workflow template 编译。
+职责：
 
-当前 planner 支持两种模式：
+- `nodes.py`：当前 workflow 节点函数
+- `planners/`：把自然语言需求转换为结构化 `state.plan`
+- `validators/`：检查工具结果是否可继续、可重试或失败
+- `adjusters/`：根据 validator diagnostics 生成有限参数调整
 
-- `raster_product_generate`：正常执行栅格专题图 workflow
-- `direct_answer`：与当前栅格 workflow 无关的问题，或请求未注册产品时，直接进入最终回答
-
-`raster_prepare` 的治理关系由 `tool_rules.py` 注册：
-
-```text
-raster_prepare
-  validator: raster_prepare_validator
-  adjuster: raster_prepare_adjuster
-  max_retries: 5
-```
-
-长期目标是：
-
-```text
-tool 执行
--> validator 检查
--> adjuster 调整参数
--> runtime 记录 retry
--> 路由决定继续、重试或失败
-```
+Planner 不输出工具调用顺序，不生成 `tool_calls`，不决定 validator、adjuster 或 retry。
 
 ## `app/workflows`
 
-保存 LangGraph workflow builder。
+保存 workflow 编排层。
 
-当前工具集成分支的真实 workflow 入口是：
+当前结构：
 
 ```text
-app/workflows/workflow.py
+app/workflows/
+  workflow.py
+  templates.py
+  tool_rules.py
 ```
 
-它已经开始编排真实工具节点：
+职责：
+
+- `templates.py`：route 到工具序列骨架的注册表
+- `tool_rules.py`：工具结果后处理规则，包含 validator、adjuster、最大 retry 次数
+- `workflow.py`：当前 V1 workflow graph；缺少 LangGraph 时提供线性 fallback runner
+
+当前支持两个 route：
+
+```text
+raster_product_generate
+direct_answer
+```
+
+`raster_product_generate` 模板声明的目标工具序列：
+
+```text
+workspace.create_workspace
+raster_prepare.prepare_raster_inputs
+index_calculation.calculate_raster_index
+render_preview.render_index_preview
+metadata.export_metadata
+answer.generate_final_answer
+```
+
+当前 `workflow.py` 仍以节点方式显式编排这些步骤，compiler/executor 尚未实现。
+
+当前节点流程：
 
 ```text
 planner
@@ -164,15 +194,7 @@ planner
 -> answer
 ```
 
-其中 `product_generation` 当前包含：
-
-```text
-index_calculation
-render_preview
-metadata export
-```
-
-workflow 也已预留 `direct_answer` 路由：当 `state.plan.route == "direct_answer"` 时，可以跳过栅格工具，直接进入 answer 节点。
+其中 `product_generation` 当前封装 index calculation、preview rendering 和 metadata export。
 
 ## 数据目录
 

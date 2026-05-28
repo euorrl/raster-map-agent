@@ -19,7 +19,7 @@
 - 工程配置先稳定，后续工具和 Agent 才容易演进
 - `data/` 只作为本地运行目录，不进入 git
 
-## 阶段 2：Mock LangGraph Workflow
+## 阶段 2：Mock Workflow 与 AgentState
 
 完成：
 
@@ -37,24 +37,29 @@ workflow 顺序是否清晰
 测试是否稳定
 ```
 
-## 阶段 3：动态 AgentState
+## 阶段 3：动态 state 分区
 
-早期 state 是扁平字段。随着工具链变多，改为动态分区：
+早期 state 是扁平字段。随着工具链变多，改为稳定顶层字段和动态分区。
+
+当前顶层字段：
 
 ```text
+user_query
 plan
+tool_calls
 workspace
 tool_results
 metadata
-```
-
-后续加入：
-
-```text
 runtime
+final_answer
+status
+errors
+warnings
 ```
 
-用于记录 planner 结果、tool plan、retry 次数、validator 结果和局部 ReAct 状态。
+`runtime` 用于记录 planner 结果、registry 解析结果、validator 结果、adjuster 结果和 retry count。
+
+曾短暂考虑单独的 `resolved` 分区，后续删除。原因是 registry 解析结果最终应进入 compiler 生成的 `tool_calls.params`，不需要额外顶层 state 字段。
 
 ## 阶段 4：日志与基础模块整理
 
@@ -84,7 +89,7 @@ runtime
 
 - AOI 数据源从 geoBoundaries 切换到 Nominatim
 - coverage 从 bbox 粗略判断改为 Shapely + AOI GeoJSON
-- scene 选择从按云量排序，演进为 coverage-aware greedy selection
+- scene 选择从按云量排序演进为 coverage-aware greedy selection
 
 ## 阶段 6：Workspace 工具
 
@@ -153,16 +158,16 @@ data/<uuid>/output/<index>.tif
 data/<uuid>/output/<index>_preview.png
 ```
 
-## 阶段 10：Agent Validation Policy
+## 阶段 10：Validation / Adjustment / Tool Rules
 
-验证和调整逻辑从工具层剥离出来，放到 agent 层。
+验证和调整逻辑从工具层剥离，放到控制层。
 
-新增结构：
+当前结构：
 
 ```text
 app/agent/validators/
 app/agent/adjusters/
-app/agent/tool_rules.py
+app/workflows/tool_rules.py
 ```
 
 已完成：
@@ -180,18 +185,6 @@ app/agent/tool_rules.py
 - `max_cloud_cover` 默认 20，只能递增，单次最多增加 5，最大不超过 30
 - `scene_limit` 和 `max_selected_scenes` 是工具内部工程参数，不允许 adjuster 修改
 
-目标：
-
-```text
-tool 执行
--> validator 检查结果
--> adjuster 根据 diagnostics 调整参数
--> runtime 记录 retry
--> workflow 路由决定继续、重试或失败
-```
-
-这为后续局部 ReAct 做准备，同时保持 `tools/` 仍然是确定性工具层。
-
 ## 阶段 11：Agent Planner
 
 全局 planner 放在 agent 层：
@@ -205,10 +198,10 @@ app/agent/planners/
 
 - 读取用户自然语言需求
 - 调用智谱模型生成结构化 plan
-- `state.plan` 只允许保存 V1 workflow 需要 LLM 决策的核心字段
-- `tool_calls` 后续由系统根据 route 和 workflow template 编译
+- `state.plan` 只保存 V1 workflow 需要 LLM 决策的核心字段
 - 不直接执行工具
 - 不生成自由 tool graph
+- 不生成 `tool_calls`
 
 当前 planner 核心字段：
 
@@ -230,19 +223,6 @@ max_cloud_cover
 - `max_cloud_cover` 初始值优先为 20，不得超过 30
 - `state.plan` 不保存 `data_source`、`need_render`、`include_colorbar`、`need_metadata`
 - 不允许把 `scene_limit`、`max_selected_scenes` 等工具内部工程参数写入 `state.plan`
-
-后续 compiler 会根据 `raster_product_generate` 模板编译 V1 工具顺序：
-
-```text
-workspace.create_workspace
-raster_prepare.prepare_raster_inputs
-index_calculation.calculate_raster_index
-render_preview.render_index_preview
-metadata.export_metadata
-answer.generate_final_answer
-```
-
-测试使用 fake client，因此不依赖真实 API key。真实运行时读取 `.env` 中的智谱配置。
 
 ## 阶段 12：Metadata Export Tool
 
@@ -290,3 +270,36 @@ app/tools/answer/
 ```
 
 测试通过 fake client 注入响应，不依赖真实 API key。
+
+## 阶段 14：Workflow 架构对齐
+
+完成：
+
+- `workflow_templates.py` 移入 `app/workflows/templates.py`
+- `tool_rules.py` 移入 `app/workflows/tool_rules.py`
+- `planner_node` 接入真实 planner
+- `registry_node` 不再把 registry 解析结果写回 `plan`
+- registry 解析结果写入 `runtime["registry"]["raster_product"]` 和 `metadata["registry"]`
+- `raster_prepare_validator_node` 调用正式 validator
+- `raster_prepare_validated` 作为统一通过状态
+- 删除 `AgentState.resolved`
+- `index_calculation`、`render_preview`、`raster_prepare` 包入口改为懒加载
+- `workflow.py` 增加 LangGraph 缺失时的线性 fallback runner
+
+当前 workflow 节点：
+
+```text
+planner
+-> registry
+-> workspace
+-> raster_prepare
+-> raster_prepare_validator
+-> product_generation
+-> answer
+```
+
+当前仍未完成：
+
+- compiler：`plan + registry + workflow template -> tool_calls`
+- executor：解析并执行 `tool_calls`
+- retry/adjuster 接入完整 graph 路由

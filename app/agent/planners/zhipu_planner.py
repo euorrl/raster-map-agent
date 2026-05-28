@@ -379,8 +379,7 @@ def _sanitize_route(
 
     if inferred_route is not None and route != inferred_route:
         warnings.append(
-            f"Ignored planner route {route}; answer mode requires "
-            f"{inferred_route}."
+            f"Ignored planner route {route}; answer mode requires " f"{inferred_route}."
         )
         return inferred_route
 

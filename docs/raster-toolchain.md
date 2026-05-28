@@ -20,7 +20,7 @@ create_workspace
 -> generate_final_answer
 ```
 
-这些工具目前可以单独调用和测试；完整 LangGraph workflow 接入仍在后续阶段。
+这些工具可以单独调用和测试。当前 `app/workflows/workflow.py` 已经开始显式编排真实工具节点；后续 compiler/executor 会把 workflow template 编译为 `state.tool_calls` 再执行。
 
 ## Workspace
 
@@ -243,6 +243,8 @@ JSON 顶层包含：
   "metadata": {}
 }
 ```
+
+当前 workflow 节点中 metadata export 仍在 `product_generation_node` 内显式调用；后续 executor 落地后会通过 `metadata.export_metadata` tool call 统一执行。
 
 ## Final Answer
 

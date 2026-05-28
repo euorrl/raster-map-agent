@@ -66,6 +66,5 @@ def get_workflow_route_answer_modes() -> dict[WorkflowRoute, AnswerMode]:
     """Return the default answer mode for each workflow route."""
 
     return {
-        route: template.answer_mode
-        for route, template in WORKFLOW_TEMPLATES.items()
+        route: template.answer_mode for route, template in WORKFLOW_TEMPLATES.items()
     }

@@ -8,43 +8,29 @@ V1 聚焦一个可落地的本地流程：
 
 ```text
 用户自然语言请求
--> planner 生成结构化计划
--> registry 补全指数、波段、公式和渲染配置
+-> planner 生成结构化 plan
+-> registry 解析已注册产品能力
 -> workspace 创建任务目录
 -> raster_prepare 准备真实 Sentinel-2 输入数据
+-> validator 检查 raster_prepare 结果
 -> index_calculation 计算 NDVI/NDWI
 -> render_preview 生成 PNG 预览图
 -> metadata 导出 JSON
 -> answer 生成最终说明
 ```
 
-当前真实工具链已经完成到：
+当前代码已经从纯 mock workflow 进入真实工具节点编排阶段。`app/workflows/workflow.py` 是当前入口；如果本地没有安装 LangGraph，会使用等价的线性 fallback runner，方便在轻量环境中验证核心逻辑。
 
-```text
-workspace
--> Nominatim AOI
--> Sentinel-2 scene planning
--> coverage diagnostics
--> raster download
--> first mosaic by band
--> AOI clip
--> index GeoTIFF
--> preview PNG
--> metadata JSON
--> final answer
-```
+## 架构重点
 
-Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 tool rules 注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证 LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
+### State 分区
 
-## 当前架构重点
-
-### 动态 AgentState
-
-`AgentState` 采用动态分区结构：
+`AgentState` 采用稳定顶层字段和动态分区：
 
 ```text
 user_query
 plan
+tool_calls
 workspace
 tool_results
 metadata
@@ -55,28 +41,54 @@ errors
 warnings
 ```
 
-其中 `runtime` 是运行时控制分区，用于保存 planner 结果、tool plan、retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态。
+关键边界：
 
-### 工具层与 Agent 层分离
+- `plan`：planner 生成的用户任务意图
+- `tool_calls`：后续 compiler 生成的带参数工具调用计划
+- `runtime`：运行时控制信息，例如 planner 结果、registry 解析结果、validator/adjuster 结果、retry count
+- `metadata`：面向最终记录、导出和回答生成的元数据
 
-项目刻意保持边界：
+项目不再保留单独的 `resolved` state 分区。当前 registry 解析结果暂存在 `runtime["registry"]["raster_product"]`，后续 compiler 落地后会直接编译进 `tool_calls.params`。
 
-- `tools/` 负责确定性的领域能力
-- `agent/` 负责规划、验证、调整、路由和恢复策略
+### Planner
 
-因此 `raster_prepare` 不直接内置 LLM ReAct。当前局部 ReAct 的基础已经放在 agent 层：
+Planner 位于：
 
 ```text
-zhipu global planner
--> structured state.plan
--> workflow template compiler
--> raster_prepare validator
--> raster_prepare adjuster
--> tool rules registry
--> runtime retry count
+app/agent/planners/zhipu_planner.py
 ```
 
-planner 负责把自然语言需求转换为受约束的结构化 plan。`state.plan` 只保留 route、answer_mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序后续由系统根据 route 和 workflow template 编译到 `state.tool_calls`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，tool rules 负责限制最大重试 5 次。
+它只负责把自然语言需求转换为受约束的 `state.plan`。Planner 不决定底层工具顺序，不生成 `tool_calls`，也不决定 validator、adjuster 或 retry。
+
+### Workflows
+
+Workflow 编排相关文件位于：
+
+```text
+app/workflows/
+  workflow.py
+  templates.py
+  tool_rules.py
+```
+
+- `templates.py` 声明 route 对应的工具序列骨架
+- `tool_rules.py` 声明工具结果后处理规则，例如 validator、adjuster 和最大 retry 次数
+- `workflow.py` 负责当前 V1 图编排和 fallback runner
+
+### Tools
+
+`app/tools` 保存确定性的领域能力。工具不直接读写 `AgentState`，而是通过请求/结果 schema 与节点交互。
+
+当前工具包括：
+
+```text
+workspace
+raster_prepare
+index_calculation
+render_preview
+metadata
+answer
+```
 
 ## 主要文档
 
