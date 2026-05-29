@@ -79,8 +79,11 @@ def test_download_raster_assets_downloads_planned_assets(monkeypatch, tmp_path):
     assert all(Path(path).exists() for path in result.band_paths["B08"])
 
 
-def test_build_raster_scene_plan_rejects_empty_search_result(monkeypatch, tmp_path):
-    # 验证没有候选 scene 时会抛出下载错误。
+def test_build_raster_scene_plan_returns_retryable_empty_search_result(
+    monkeypatch,
+    tmp_path,
+):
+    # 验证没有候选 scene 时返回可重试诊断，而不是直接抛出错误。
     monkeypatch.setattr(
         "app.tools.raster_prepare.scene_plan._search_earth_search",
         lambda _: [],
@@ -88,8 +91,19 @@ def test_build_raster_scene_plan_rejects_empty_search_result(monkeypatch, tmp_pa
 
     request = _build_request(tmp_path)
 
-    with pytest.raises(RasterDownloadError, match="No raster scenes found"):
-        build_raster_scene_plan(request)
+    plan = build_raster_scene_plan(request)
+
+    assert plan.scene_ids == []
+    assert plan.assets == []
+    assert plan.diagnostics.coverage_status == "not_covered"
+    assert plan.diagnostics.coverage_ratio == 0
+    assert plan.diagnostics.is_retriable is True
+    assert plan.diagnostics.failure_reason == "no_raster_scenes_found"
+    assert plan.diagnostics.suggested_actions == [
+        "expand_date_range",
+        "increase_max_cloud_cover",
+    ]
+    assert plan.diagnostics.selected_scene_count == 0
 
 
 def test_build_raster_scene_plan_rejects_missing_asset(monkeypatch, tmp_path):
@@ -112,8 +126,11 @@ def test_build_raster_scene_plan_rejects_missing_asset(monkeypatch, tmp_path):
         build_raster_scene_plan(request)
 
 
-def test_build_raster_scene_plan_filters_cloud_cover(monkeypatch, tmp_path):
-    # 验证超过云量阈值的 scene 会在本地过滤掉。
+def test_build_raster_scene_plan_returns_retryable_when_cloud_filter_removes_all(
+    monkeypatch,
+    tmp_path,
+):
+    # 验证超过云量阈值的 scene 被过滤后会返回可重试诊断。
     scenes = [
         RasterScene(
             scene_id="scene_too_cloudy",
@@ -131,8 +148,14 @@ def test_build_raster_scene_plan_filters_cloud_cover(monkeypatch, tmp_path):
 
     request = _build_request(tmp_path)
 
-    with pytest.raises(RasterDownloadError, match="No raster scenes found"):
-        build_raster_scene_plan(request)
+    plan = build_raster_scene_plan(request)
+
+    assert plan.scene_ids == []
+    assert plan.assets == []
+    assert plan.diagnostics.coverage_status == "not_covered"
+    assert plan.diagnostics.coverage_ratio == 0
+    assert plan.diagnostics.is_retriable is True
+    assert plan.diagnostics.failure_reason == "no_raster_scenes_found"
 
 
 def test_raster_scene_plan_request_rejects_unsupported_band():

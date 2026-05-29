@@ -52,6 +52,10 @@ def build_product_info(workflow_state: dict[str, Any]) -> dict[str, Any]:
     registry = _as_dict(runtime.get("registry"))
     raster_product = _as_dict(registry.get("raster_product"))
     raster_prepare = _as_dict(tool_results.get("raster_prepare"))
+    raster_prepare_params = _get_last_tool_call_params(
+        workflow_state,
+        "raster_prepare",
+    )
     validation = _as_dict(_as_dict(runtime.get("validators")).get("raster_prepare"))
     diagnostics = _as_dict(raster_prepare.get("diagnostics"))
     data_source = (
@@ -91,12 +95,15 @@ def build_product_info(workflow_state: dict[str, Any]) -> dict[str, Any]:
             "method": product_method,
         },
         "area": {
-            "aoi_query": plan.get("aoi_query"),
+            "aoi_query": raster_prepare_params.get("aoi_query")
+            or plan.get("aoi_query"),
         },
         "time_range": {
-            "start_date": plan.get("start_date"),
-            "end_date": plan.get("end_date"),
-            "max_cloud_cover": plan.get("max_cloud_cover"),
+            "start_date": raster_prepare_params.get("start_date")
+            or plan.get("start_date"),
+            "end_date": raster_prepare_params.get("end_date") or plan.get("end_date"),
+            "max_cloud_cover": raster_prepare_params.get("max_cloud_cover")
+            or plan.get("max_cloud_cover"),
         },
         "source": {
             "data_source": data_source,
@@ -163,6 +170,29 @@ def _find_first_band_path(raster_prepare: dict[str, Any]) -> str | None:
             return path_value
 
     return None
+
+
+def _get_last_tool_call_params(
+    workflow_state: dict[str, Any],
+    tool_call_id: str,
+) -> dict[str, Any]:
+    tool_calls = workflow_state.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return {}
+
+    runtime = _as_dict(workflow_state.get("runtime"))
+    last_index = runtime.get("last_tool_index")
+    if isinstance(last_index, int) and 0 <= last_index < len(tool_calls):
+        tool_call = _as_dict(tool_calls[last_index])
+        if tool_call.get("id") == tool_call_id:
+            return _as_dict(tool_call.get("params"))
+
+    for tool_call_value in reversed(tool_calls):
+        tool_call = _as_dict(tool_call_value)
+        if tool_call.get("id") == tool_call_id:
+            return _as_dict(tool_call.get("params"))
+
+    return {}
 
 
 def _build_metadata_payload(product_info: dict[str, Any]) -> dict[str, Any]:

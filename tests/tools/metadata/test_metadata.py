@@ -104,6 +104,34 @@ def test_build_product_info_handles_non_index_product_without_formula(tmp_path):
     }
 
 
+def test_build_product_info_prefers_last_raster_prepare_params(tmp_path):
+    workflow_state = _build_workflow_state(tmp_path)
+    workflow_state["runtime"]["last_tool_index"] = 0
+    workflow_state["tool_calls"] = [
+        {
+            "id": "raster_prepare",
+            "tool_name": "raster_prepare.prepare_raster_inputs",
+            "params": {
+                "aoi_query": "Milan, Italy",
+                "index_name": "NDBI",
+                "data_source": "sentinel2",
+                "start_date": "2026-04-01",
+                "end_date": "2026-05-29",
+                "max_cloud_cover": 30,
+            },
+        }
+    ]
+
+    product_info = build_product_info(workflow_state)
+
+    assert product_info["area"] == {"aoi_query": "Milan, Italy"}
+    assert product_info["time_range"] == {
+        "start_date": "2026-04-01",
+        "end_date": "2026-05-29",
+        "max_cloud_cover": 30,
+    }
+
+
 def test_build_product_info_reads_spatial_profile_from_product_tif(tmp_path):
     rasterio = pytest.importorskip("rasterio")
     numpy = pytest.importorskip("numpy")

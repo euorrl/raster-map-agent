@@ -12,7 +12,7 @@ from app.workflows.workflow import run_workflow  # noqa: E402
 def main() -> None:
     configure_logging("INFO")
 
-    user_query = "I want to see the recent vegetation distribution in Chengdu"
+    user_query = "想看看成都最近的植被分布如何"
     state = run_workflow(user_query)
 
     print("\n" + "-" * 30 + "\n")

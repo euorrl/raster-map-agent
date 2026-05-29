@@ -242,10 +242,9 @@ def _build_answer_messages(request: FinalAnswerRequest) -> list[dict[str, str]]:
             "- 如果 metadata_has_failure 为 true，或 metadata 中存在 status=failed、"
             "errors、失败诊断、缺少关键结果：回答要更详细，说明失败阶段、"
             "失败原因、已知上下文、用户可以如何调整请求，并提供一个正常运行"
-            "的示例，例如：生成成都 NDVI 图，时间范围 2024-06-01 到 "
-            "2024-08-31，最大云量 20%。\n"
+            "的示例，例如：我想看看 2026 年米兰的建成区。\n"
             "- 如果只有警告没有失败：简要说明结果，并补充警告含义。\n"
-            "在最终答案后面同时输出一版英文版本，格式同上，但用英文表达。\n\n"
+            "返回正常回答时后面同时输出一版英文版本，格式同上，但用英文表达。\n\n"
             "\n\n"
             f"context:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
         )

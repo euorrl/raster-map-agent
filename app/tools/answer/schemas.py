@@ -17,6 +17,10 @@ class FinalAnswerRequest(BaseModel):
       更详细的诊断和正常运行示例。
     - direct_answer: 对普通问题、当前不支持的产品或 agent 能力介绍类问题
       直接回答。
+    - question 和 user_query 是 answer tool 的输入参数，分别用于 direct_answer 和
+      metadata_summary 两种模式。answer tool 会根据 answer_mode 选择使用哪个参数。
+    - metadata 是 answer tool 的输入参数，包含 workflow 执行的详细上下文信息，
+      供 answer tool 生成回答时参考。
     """
 
     answer_mode: AnswerMode
