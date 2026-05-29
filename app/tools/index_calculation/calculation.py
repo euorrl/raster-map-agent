@@ -6,6 +6,8 @@ import shutil
 
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
+from rasterio.warp import reproject
 
 from app.tools.raster_prepare.schemas import CLIPPED_RASTER_DIRNAME
 from app.tools.index_calculation.schemas import (
@@ -81,8 +83,10 @@ def _load_role_arrays(
                 reference_crs = source.crs
                 reference_profile = source.profile.copy()
             else:
-                _ensure_aligned(
+                data = _align_to_reference_grid(
                     path=band_path,
+                    data=data,
+                    source_nodata=source.nodata,
                     shape=data.shape,
                     transform=source.transform,
                     crs=source.crs,
@@ -113,23 +117,45 @@ def _ensure_file_exists(path: Path, band: str) -> None:
         raise IndexCalculationError(f"Input band {band} does not exist: {path}")
 
 
-def _ensure_aligned(
+def _align_to_reference_grid(
     path: Path,
+    data: np.ndarray,
+    source_nodata,
     shape: tuple[int, int],
     transform,
     crs,
     reference_shape: tuple[int, int],
     reference_transform,
     reference_crs,
-) -> None:
-    """确认所有输入 band 已经在同一网格上。"""
+) -> np.ndarray:
+    """将输入 band 对齐到第一个 band 的网格。"""
 
     if (
-        shape != reference_shape
-        or transform != reference_transform
-        or crs != reference_crs
+        shape == reference_shape
+        and transform == reference_transform
+        and crs == reference_crs
     ):
-        raise IndexCalculationError(f"Input band is not aligned: {path}")
+        return data
+
+    if crs is None or reference_crs is None:
+        raise IndexCalculationError(
+            f"Input band is not aligned and CRS is missing: {path}"
+        )
+
+    logger.info("Resampling input band to reference grid path=%s", path)
+    destination = np.full(reference_shape, np.nan, dtype="float32")
+    reproject(
+        source=data,
+        destination=destination,
+        src_transform=transform,
+        src_crs=crs,
+        src_nodata=source_nodata,
+        dst_transform=reference_transform,
+        dst_crs=reference_crs,
+        dst_nodata=np.nan,
+        resampling=Resampling.bilinear,
+    )
+    return destination
 
 
 def _evaluate_formula(

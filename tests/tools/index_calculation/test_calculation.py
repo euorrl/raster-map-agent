@@ -60,21 +60,27 @@ def test_calculate_raster_index_rejects_unknown_formula_role(tmp_path):
         )
 
 
-def test_calculate_raster_index_rejects_misaligned_bands(tmp_path):
+def test_calculate_raster_index_resamples_misaligned_bands(tmp_path):
     clipped_dir = tmp_path / "clipped_raster"
     clipped_dir.mkdir()
     _write_test_raster(clipped_dir / "B04_clipped.tif", np.ones((2, 2)))
     _write_test_raster(clipped_dir / "B08_clipped.tif", np.ones((3, 3)))
 
-    with pytest.raises(IndexCalculationError, match="not aligned"):
-        calculate_raster_index(
-            IndexCalculationRequest(
-                workspace_dir=tmp_path,
-                index_name="NDVI",
-                band_roles={"red": "B04", "nir": "B08"},
-                index_formula="(nir - red) / (nir + red)",
-            )
+    result = calculate_raster_index(
+        IndexCalculationRequest(
+            workspace_dir=tmp_path,
+            index_name="NDVI",
+            band_roles={"red": "B04", "nir": "B08"},
+            index_formula="(nir - red) / (nir + red)",
         )
+    )
+
+    assert not clipped_dir.exists()
+    with rasterio.open(result.index_tif_path) as dataset:
+        data = dataset.read(1)
+        assert data.shape == (2, 2)
+
+    np.testing.assert_allclose(data, np.zeros((2, 2)))
 
 
 def _write_test_raster(path, data):

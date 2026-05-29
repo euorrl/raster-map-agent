@@ -79,9 +79,13 @@ RASTER_DATA_SOURCE_REGISTRY: dict[str, RasterDataSourceConfig] = {
         provider="earth_search",
         collection="sentinel-2-l2a",
         band_assets={
+            "B02": "blue",
             "B03": "green",
             "B04": "red",
+            "B05": "rededge1",
             "B08": "nir",
+            "B11": "swir16",
+            "B12": "swir22",
         },
         enabled_for_raster_prepare=True,
     ),
@@ -90,15 +94,19 @@ RASTER_DATA_SOURCE_REGISTRY: dict[str, RasterDataSourceConfig] = {
         provider="earth_search",
         collection="landsat-c2-l2",
         band_assets={
+            "B02": "blue",
             "B03": "green",
             "B04": "red",
             "B05": "nir08",
+            "B06": "swir16",
+            "B07": "swir22",
         },
         enabled_for_raster_prepare=False,
     ),
 }
 
 INDEX_REGISTRY: dict[str, IndexConfig] = {
+    # 植被绿度与覆盖度，最通用的植被指数。
     "NDVI": IndexConfig(
         name="NDVI",
         index_formula="(nir - red) / (nir + red)",
@@ -118,13 +126,34 @@ INDEX_REGISTRY: dict[str, IndexConfig] = {
             ),
         },
     ),
+    # 土壤调节植被指数，适合稀疏植被、裸土背景明显的区域。
+    "SAVI": IndexConfig(
+        name="SAVI",
+        index_formula="1.5 * (nir - red) / (nir + red + 0.5)",
+        render_config=RasterRenderConfig(
+            vmin=-0.2,
+            vmax=0.8,
+            colormap="YlGn",
+        ),
+        data_sources={
+            "sentinel2": IndexDataSourceConfig(
+                data_source="sentinel2",
+                band_roles={"red": "B04", "nir": "B08"},
+            ),
+            "landsat": IndexDataSourceConfig(
+                data_source="landsat",
+                band_roles={"red": "B04", "nir": "B05"},
+            ),
+        },
+    ),
+    # 水体指数，使用 Green/NIR 版本，适合增强水体。
     "NDWI": IndexConfig(
         name="NDWI",
         index_formula="(green - nir) / (green + nir)",
         render_config=RasterRenderConfig(
             vmin=-0.5,
             vmax=0.5,
-            colormap="blues",
+            colormap="Blues",
         ),
         data_sources={
             "sentinel2": IndexDataSourceConfig(
@@ -134,6 +163,66 @@ INDEX_REGISTRY: dict[str, IndexConfig] = {
             "landsat": IndexDataSourceConfig(
                 data_source="landsat",
                 band_roles={"green": "B03", "nir": "B05"},
+            ),
+        },
+    ),
+    # 水分指数，适合植被含水量、地表湿度、干旱胁迫分析。
+    "NDMI": IndexConfig(
+        name="NDMI",
+        index_formula="(nir - swir) / (nir + swir)",
+        render_config=RasterRenderConfig(
+            vmin=-0.5,
+            vmax=0.5,
+            colormap="BrBG",
+        ),
+        data_sources={
+            "sentinel2": IndexDataSourceConfig(
+                data_source="sentinel2",
+                band_roles={"nir": "B08", "swir": "B11"},
+            ),
+            "landsat": IndexDataSourceConfig(
+                data_source="landsat",
+                band_roles={"nir": "B05", "swir": "B06"},
+            ),
+        },
+    ),
+    # 建成区指数，适合突出城市建成区、不透水面和裸地。
+    "NDBI": IndexConfig(
+        name="NDBI",
+        index_formula="(swir - nir) / (swir + nir)",
+        render_config=RasterRenderConfig(
+            vmin=-0.5,
+            vmax=0.5,
+            colormap="Oranges",
+        ),
+        data_sources={
+            "sentinel2": IndexDataSourceConfig(
+                data_source="sentinel2",
+                band_roles={"swir": "B11", "nir": "B08"},
+            ),
+            "landsat": IndexDataSourceConfig(
+                data_source="landsat",
+                band_roles={"swir": "B06", "nir": "B05"},
+            ),
+        },
+    ),
+    # 燃烧指数，适合火烧迹地、火灾影响和植被受损分析。
+    "NBR": IndexConfig(
+        name="NBR",
+        index_formula="(nir - swir2) / (nir + swir2)",
+        render_config=RasterRenderConfig(
+            vmin=-0.5,
+            vmax=0.8,
+            colormap="RdYlGn",
+        ),
+        data_sources={
+            "sentinel2": IndexDataSourceConfig(
+                data_source="sentinel2",
+                band_roles={"nir": "B08", "swir2": "B12"},
+            ),
+            "landsat": IndexDataSourceConfig(
+                data_source="landsat",
+                band_roles={"nir": "B05", "swir2": "B07"},
             ),
         },
     ),

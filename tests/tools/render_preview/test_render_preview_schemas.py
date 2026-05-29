@@ -6,12 +6,14 @@ import pytest
 rasterio = pytest.importorskip("rasterio")
 from rasterio.transform import from_origin  # noqa: E402
 
+from app.registry import INDEX_REGISTRY  # noqa: E402
 from app.tools.render_preview import (  # noqa: E402
     RenderPreviewError,
     RenderPreviewRequest,
     render_index_preview,
 )
 from app.tools.render_preview.render import (  # noqa: E402
+    SUPPORTED_COLORMAPS,
     _apply_colormap,
     _get_preview_shape,
 )
@@ -98,6 +100,23 @@ def test_apply_colormap_rejects_unknown_colormap():
             valid_mask=np.ones((2, 2), dtype="bool"),
             colormap="unknown",
         )
+
+
+def test_render_preview_supports_registered_colormaps():
+    registered_colormaps = {
+        index_config.render_config.colormap for index_config in INDEX_REGISTRY.values()
+    }
+
+    for colormap in registered_colormaps:
+        rgba = _apply_colormap(
+            scaled=np.ones((2, 2), dtype="float32"),
+            valid_mask=np.ones((2, 2), dtype="bool"),
+            colormap=colormap,
+        )
+
+        assert colormap.lower() in SUPPORTED_COLORMAPS
+        assert rgba.shape == (4, 2, 2)
+        assert np.all(rgba[3] == 255)
 
 
 def test_get_preview_shape_limits_longest_side():
