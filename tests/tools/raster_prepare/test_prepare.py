@@ -136,7 +136,7 @@ def test_prepare_raster_inputs_runs_pipeline_and_cleans_intermediates(
     assert Path(result.band_paths["B04"]).exists()
     assert result.scene_ids == ["scene_1"]
     assert result.diagnostics.coverage_status == "covered"
-    assert (workspace_dir / "aoi").exists()
+    assert not (workspace_dir / "aoi").exists()
     assert not (workspace_dir / "raster").exists()
     assert not (workspace_dir / "mosaic_raster").exists()
     assert [call[0] for call in calls] == [
@@ -241,6 +241,7 @@ def test_prepare_raster_inputs_returns_early_when_scene_coverage_fails(
     assert (workspace_dir / "output").exists()
     assert result.diagnostics.coverage_status == "not_covered"
     assert result.diagnostics.is_retriable is True
+    assert not (workspace_dir / "aoi").exists()
     assert not (workspace_dir / "raster").exists()
     assert not (workspace_dir / "mosaic_raster").exists()
 

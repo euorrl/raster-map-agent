@@ -12,6 +12,7 @@ from app.tools.raster_prepare import (
     resolve_administrative_aoi,
 )
 from app.tools.raster_prepare.schemas import (
+    AOI_DIRNAME,
     AOIRequest,
     MOSAIC_RASTER_DIRNAME,
     OUTPUT_DIRNAME,
@@ -72,6 +73,10 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
             scene_plan.diagnostics.coverage_ratio,
             scene_plan.diagnostics.min_coverage_ratio,
         )
+        _remove_intermediate_dirs(
+            workspace_dir=workspace_dir,
+            dirnames=[AOI_DIRNAME],
+        )
         return RasterPrepareResult(
             workspace_dir=str(workspace_dir),
             output_dir=str(output_dir),
@@ -110,7 +115,7 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
 
     _remove_intermediate_dirs(
         workspace_dir=workspace_dir,
-        dirnames=[RASTER_DIRNAME, MOSAIC_RASTER_DIRNAME],
+        dirnames=[AOI_DIRNAME, RASTER_DIRNAME, MOSAIC_RASTER_DIRNAME],
     )
 
     return RasterPrepareResult(

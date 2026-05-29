@@ -2,10 +2,12 @@
 
 import ast
 from pathlib import Path
+import shutil
 
 import numpy as np
 import rasterio
 
+from app.tools.raster_prepare.schemas import CLIPPED_RASTER_DIRNAME
 from app.tools.index_calculation.schemas import (
     IndexCalculationError,
     IndexCalculationRequest,
@@ -51,6 +53,7 @@ def calculate_raster_index(request: IndexCalculationRequest) -> IndexCalculation
         destination.write(output_data, 1)
 
     logger.info("Saved raster index path=%s", request.output_path)
+    _remove_clipped_raster_dir(request.workspace_dir)
     return IndexCalculationResult(index_tif_path=str(request.output_path))
 
 
@@ -187,3 +190,29 @@ def _apply_operator(operator: ast.operator, left, right):
     raise IndexCalculationError(
         f"Unsupported operator in index formula: {operator.__class__.__name__}"
     )
+
+
+def _remove_clipped_raster_dir(workspace_dir: Path) -> None:
+    """删除指数计算消费完成后的 clipped_raster 中间目录。"""
+
+    resolved_workspace = workspace_dir.resolve()
+    target_dir = (workspace_dir / CLIPPED_RASTER_DIRNAME).resolve()
+    if not _is_relative_to(target_dir, resolved_workspace):
+        raise IndexCalculationError(
+            f"Refuse to delete path outside workspace: {target_dir}"
+        )
+
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+        logger.info("Removed intermediate directory path=%s", target_dir)
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    """兼容 Python 3.10 的 Path.is_relative_to。"""
+
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+
+    return True

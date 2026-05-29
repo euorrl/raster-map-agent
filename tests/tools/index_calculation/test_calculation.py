@@ -33,6 +33,7 @@ def test_calculate_raster_index_writes_ndvi(tmp_path):
     )
 
     assert result.index_tif_path == str(tmp_path / "output" / "ndvi.tif")
+    assert not clipped_dir.exists()
     with rasterio.open(result.index_tif_path) as dataset:
         data = dataset.read(1)
         assert dataset.nodata == -9999.0
