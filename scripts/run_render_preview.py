@@ -17,7 +17,7 @@ def main() -> None:
 
     request = RenderPreviewRequest(
         index_name="NDWI",
-        index_tif_path=Path("data/9f8b921411534fbba471b6fcf51f70f0/output/ndwi.tif"),
+        index_tif_path=Path("data/9f8b921411534fbba471b6fcf51f70f0/output/result.tif"),
     )
     result = render_index_preview(request)
 

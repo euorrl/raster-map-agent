@@ -81,13 +81,13 @@ def test_workflow_completes_real_tool_nodes_with_patched_tools(
         assert request.workspace_dir == workspace_dir
         assert request.band_roles == {"red": "B04", "nir": "B08"}
         return IndexCalculationResult(
-            index_tif_path=str(workspace_dir / "output" / "ndvi.tif")
+            index_tif_path=str(workspace_dir / "output" / "result.tif")
         )
 
     def fake_render_index_preview(request):
-        assert request.index_tif_path == workspace_dir / "output" / "ndvi.tif"
+        assert request.index_tif_path == workspace_dir / "output" / "result.tif"
         return RenderPreviewResult(
-            preview_path=str(workspace_dir / "output" / "ndvi_preview.png")
+            preview_path=str(workspace_dir / "output" / "preview.png")
         )
 
     monkeypatch.setattr(nodes, "build_agent_plan", fake_build_agent_plan)

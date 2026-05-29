@@ -137,7 +137,7 @@ def test_build_product_info_reads_spatial_profile_from_product_tif(tmp_path):
     numpy = pytest.importorskip("numpy")
     from rasterio.transform import from_origin
 
-    product_tif_path = tmp_path / "output" / "ndvi.tif"
+    product_tif_path = tmp_path / "output" / "result.tif"
     product_tif_path.parent.mkdir()
     with rasterio.open(
         product_tif_path,
@@ -251,10 +251,10 @@ def _build_workflow_state(tmp_path):
                 },
             },
             "index_calculation": {
-                "index_tif_path": str(tmp_path / "output" / "ndvi.tif"),
+                "index_tif_path": str(tmp_path / "output" / "result.tif"),
             },
             "render_preview": {
-                "preview_path": str(tmp_path / "output" / "ndvi_preview.png"),
+                "preview_path": str(tmp_path / "output" / "preview.png"),
             },
         },
         "warnings": [],

@@ -205,7 +205,7 @@ RasterPrepareResult(
 输出：
 
 ```text
-data/<uuid>/output/ndvi.tif
+data/<uuid>/output/result.tif
 ```
 
 ## Render Preview
@@ -215,7 +215,7 @@ data/<uuid>/output/ndvi.tif
 输出：
 
 ```text
-data/<uuid>/output/ndvi_preview.png
+data/<uuid>/output/preview.png
 ```
 
 ## Metadata Export

@@ -231,7 +231,7 @@ data/<uuid>/output/
 例如：
 
 ```text
-data/<uuid>/output/ndvi.tif
-data/<uuid>/output/ndvi_preview.png
+data/<uuid>/output/result.tif
+data/<uuid>/output/preview.png
 data/<uuid>/output/metadata.json
 ```

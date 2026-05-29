@@ -28,7 +28,7 @@ class RenderPreviewRequest(BaseModel):
     def output_path(self) -> Path:
         """预览 PNG 输出路径。"""
 
-        filename = self.output_filename or f"{self.index_name.lower()}_preview.png"
+        filename = self.output_filename or "preview.png"
         return self.index_tif_path.parent / filename
 
     @field_validator("index_name")

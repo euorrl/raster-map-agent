@@ -186,14 +186,14 @@ def test_execute_raster_product_tool_calls_with_injected_tools(tmp_path):
         assert request.workspace_dir == workspace_dir
         assert request.band_roles == {"red": "B04", "nir": "B08"}
         return IndexCalculationResult(
-            index_tif_path=str(workspace_dir / "output" / "ndvi.tif")
+            index_tif_path=str(workspace_dir / "output" / "result.tif")
         )
 
     def fake_render_preview(request):
         assert isinstance(request, RenderPreviewRequest)
-        assert request.index_tif_path == workspace_dir / "output" / "ndvi.tif"
+        assert request.index_tif_path == workspace_dir / "output" / "result.tif"
         return RenderPreviewResult(
-            preview_path=str(workspace_dir / "output" / "ndvi_preview.png")
+            preview_path=str(workspace_dir / "output" / "preview.png")
         )
 
     def fake_metadata(request):
@@ -202,7 +202,7 @@ def test_execute_raster_product_tool_calls_with_injected_tools(tmp_path):
         assert workflow_state["tool_results"]["raster_prepare"]["index_name"] == "NDVI"
         assert workflow_state["tool_results"]["index_calculation"][
             "index_tif_path"
-        ] == str(workspace_dir / "output" / "ndvi.tif")
+        ] == str(workspace_dir / "output" / "result.tif")
         return MetadataExportResult(
             metadata_path=str(workspace_dir / "output" / "metadata.json"),
             product_info={"product": {"type": "index", "name": "NDVI"}},
@@ -278,7 +278,7 @@ def test_execute_raster_product_tool_calls_with_injected_tools(tmp_path):
     assert result.workspace["workspace_dir"] == str(workspace_dir)
     assert result.tool_results["raster_prepare"]["index_name"] == "NDVI"
     assert result.tool_results["index_calculation"]["index_tif_path"].endswith(
-        "ndvi.tif"
+        "result.tif"
     )
     assert result.tool_results["metadata_export"]["product_info"] == {
         "product": {"type": "index", "name": "NDVI"}

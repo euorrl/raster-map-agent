@@ -137,7 +137,7 @@ prepare 不再自己创建 UUID
 输出：
 
 ```text
-data/<uuid>/output/<index>.tif
+data/<uuid>/output/result.tif
 ```
 
 ## 阶段 9：预览渲染工具
@@ -154,7 +154,7 @@ data/<uuid>/output/<index>.tif
 输出：
 
 ```text
-data/<uuid>/output/<index>_preview.png
+data/<uuid>/output/preview.png
 ```
 
 ## 阶段 10：Validation / Adjustment / Tool Rules

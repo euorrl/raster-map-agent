@@ -22,17 +22,17 @@ from app.tools.render_preview.render import (  # noqa: E402
 def test_render_preview_request_uses_index_tif_parent_as_output_dir(tmp_path):
     request = RenderPreviewRequest(
         index_name="ndvi",
-        index_tif_path=tmp_path / "output" / "ndvi.tif",
+        index_tif_path=tmp_path / "output" / "result.tif",
     )
 
     assert request.index_name == "NDVI"
-    assert request.output_path == tmp_path / "output" / "ndvi_preview.png"
+    assert request.output_path == tmp_path / "output" / "preview.png"
 
 
 def test_render_preview_request_allows_custom_output_filename(tmp_path):
     request = RenderPreviewRequest(
         index_name="NDWI",
-        index_tif_path=tmp_path / "output" / "ndwi.tif",
+        index_tif_path=tmp_path / "output" / "result.tif",
         output_filename="water_preview.png",
     )
 
@@ -42,7 +42,7 @@ def test_render_preview_request_allows_custom_output_filename(tmp_path):
 def test_render_preview_request_has_default_max_size(tmp_path):
     request = RenderPreviewRequest(
         index_name="NDVI",
-        index_tif_path=tmp_path / "output" / "ndvi.tif",
+        index_tif_path=tmp_path / "output" / "result.tif",
     )
 
     assert request.max_size == 2048
@@ -50,7 +50,7 @@ def test_render_preview_request_has_default_max_size(tmp_path):
 
 
 def test_render_index_preview_writes_png(tmp_path):
-    index_tif_path = tmp_path / "output" / "ndvi.tif"
+    index_tif_path = tmp_path / "output" / "result.tif"
     index_tif_path.parent.mkdir()
     _write_index_raster(
         index_tif_path,
@@ -61,7 +61,7 @@ def test_render_index_preview_writes_png(tmp_path):
         RenderPreviewRequest(index_name="NDVI", index_tif_path=index_tif_path)
     )
 
-    assert result.preview_path == str(tmp_path / "output" / "ndvi_preview.png")
+    assert result.preview_path == str(tmp_path / "output" / "preview.png")
     with rasterio.open(result.preview_path) as dataset:
         assert dataset.driver == "PNG"
         assert dataset.count == 4
@@ -76,7 +76,7 @@ def test_render_index_preview_writes_png(tmp_path):
 
 
 def test_render_index_preview_can_disable_colorbar(tmp_path):
-    index_tif_path = tmp_path / "output" / "ndwi.tif"
+    index_tif_path = tmp_path / "output" / "result.tif"
     index_tif_path.parent.mkdir()
     _write_index_raster(index_tif_path, np.ones((2, 2), dtype="float32"))
 

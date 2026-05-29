@@ -68,11 +68,11 @@ def test_generate_final_answer_metadata_summary_with_fake_client():
         assert "workflow metadata" in messages[1]["content"]
         assert '"metadata_has_failure": false' in messages[1]["content"]
         assert "Chengdu, Sichuan, China" in messages[1]["content"]
-        assert "ndvi_preview.png" in messages[1]["content"]
+        assert "preview.png" in messages[1]["content"]
         return """
         ```json
         {
-          "final_answer": "已生成成都 NDVI 专题图，预览图为 ndvi_preview.png。"
+          "final_answer": "已生成成都 NDVI 专题图，预览图为 preview.png。"
         }
         ```
         """
@@ -87,14 +87,14 @@ def test_generate_final_answer_metadata_summary_with_fake_client():
                     "index_name": "NDVI",
                 },
                 "render_preview": {
-                    "preview_path": "data/run/output/ndvi_preview.png",
+                    "preview_path": "data/run/output/preview.png",
                 },
             },
         ),
         client=fake_client,
     )
 
-    assert result.final_answer == "已生成成都 NDVI 专题图，预览图为 ndvi_preview.png。"
+    assert result.final_answer == "已生成成都 NDVI 专题图，预览图为 preview.png。"
 
 
 def test_generate_final_answer_failure_metadata_prompt_with_fake_client():

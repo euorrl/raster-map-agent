@@ -14,7 +14,7 @@ def test_index_calculation_request_uses_workspace_layout(tmp_path):
     assert request.index_name == "NDVI"
     assert request.clipped_raster_dir == tmp_path / "clipped_raster"
     assert request.output_dir == tmp_path / "output"
-    assert request.output_path == tmp_path / "output" / "ndvi.tif"
+    assert request.output_path == tmp_path / "output" / "result.tif"
     assert request.band_paths == {
         "B04": tmp_path / "clipped_raster" / "B04_clipped.tif",
         "B08": tmp_path / "clipped_raster" / "B08_clipped.tif",
