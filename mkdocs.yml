@@ -1,0 +1,31 @@
+site_name: Raster Map Agent
+site_description: 自然语言驱动的 Raster Workflow Agent
+site_author: Raster Map Agent Contributors
+docs_dir: docs
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+
+nav:
+  - 首页: index.md
+  - V1 总结: v1-summary.md
+  - 项目架构: architecture.md
+  - 栅格工具链: raster-toolchain.md
+  - 关键设计决策: design-decisions.md
+  - Demo Cases: demo-cases.md
+  - Scene 选择算法迭代: scene-selection-evolution.md
+  - 开发日志: development-log.md
+  - 路线图: roadmap.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
