@@ -1,88 +1,69 @@
-# Raster Map Agent
+# Raster Map Agent 文档
 
-Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。它的目标不是只写一个遥感处理脚本，而是逐步构建一个能够理解用户需求、准备空间数据、生成地图产品并解释结果的本地 Agent。
+Raster Map Agent 是一个自然语言驱动的、受控型 Raster Workflow Agent。当前 V1 已经可以在本地端到端运行 Sentinel-2 指数产品生成流程，并输出统一命名的结果文件。
 
-## 当前 V1 目标
+## V1 能力概览
 
-V1 聚焦一个可落地的本地流程：
+当前 V1 支持：
 
-```text
-用户自然语言请求
--> planner 生成结构化计划
--> registry 补全指数、波段、公式和渲染配置
--> workspace 创建任务目录
--> raster_prepare 准备真实 Sentinel-2 输入数据
--> index_calculation 计算 NDVI/NDWI
--> render_preview 生成 PNG 预览图
--> metadata 导出 JSON
--> answer 生成最终说明
-```
+- 自然语言 planner；
+- route decision；
+- `raster_product_generate` 与 `direct_answer` 两条 route；
+- 六个 Sentinel-2 指数产品：NDVI、SAVI、NDWI、NDMI、NDBI、NBR；
+- 真实 STAC 查询、影像下载、AOI 裁剪、指数计算、预览图渲染；
+- metadata 导出和 final answer 生成；
+- `raster_prepare` validator / adjuster retry loop；
+- 本地 workspace 创建与中间文件清理。
 
-当前真实工具链已经完成到：
+## 当前 workflow
 
 ```text
-workspace
--> Nominatim AOI
--> Sentinel-2 scene planning
--> coverage diagnostics
--> raster download
--> first mosaic by band
--> AOI clip
--> index GeoTIFF
--> preview PNG
--> metadata JSON
+planner
+-> route decision
+-> registry if raster task
+-> compiler
+-> execute_tool loop
+-> optional validate_tool / adjust_tool loop
 -> final answer
 ```
 
-Agent 层已经具备智谱全局 planner、raster_prepare validator、adjuster 和 policy 注册表。当前 `app/workflows/v1_workflow.py` 仍是 mock workflow，用于验证 LangGraph state 传递；真实 planner 和工具链接入 workflow 是下一步集成任务。
-
-## 当前架构重点
-
-### 动态 AgentState
-
-`AgentState` 采用动态分区结构：
+Raster route 的 tool calls 由 compiler 生成，不由 LLM 自由决定：
 
 ```text
-user_query
-plan
-workspace
-tool_results
-metadata
-runtime
-final_answer
-status
-errors
-warnings
+workspace.create_workspace
+raster_prepare.prepare_raster_inputs
+index_calculation.calculate_raster_index
+render_preview.render_index_preview
+metadata.export_metadata
+answer.generate_final_answer
 ```
 
-其中 `runtime` 是运行时控制分区，用于保存 planner 结果、tool plan、retry 次数、validator 结果、adjuster 结果和局部 ReAct 状态。
-
-### 工具层与 Agent 层分离
-
-项目刻意保持边界：
-
-- `tools/` 负责确定性的领域能力
-- `agent/` 负责规划、验证、调整、路由和恢复策略
-
-因此 `raster_prepare` 不直接内置 LLM ReAct。当前局部 ReAct 的基础已经放在 agent 层：
+Direct answer route 只执行：
 
 ```text
-zhipu global planner
--> structured state.plan
--> runtime.tool_plan
--> raster_prepare validator
--> raster_prepare adjuster
--> policy registry
--> runtime retry count
+answer.generate_final_answer
 ```
 
-planner 负责把自然语言需求转换为受约束的结构化 plan，并给出工具调用顺序。`state.plan` 只保留 response mode、AOI、产品/指数、日期和云量这类核心业务参数；工具链顺序写入 `runtime.tool_plan`。validator 负责确定性验收，adjuster 通过智谱模型提出下一轮参数建议，policy 负责限制最大重试 5 次。
+## 输出结构
 
-## 主要文档
+所有指数产品统一输出：
 
+```text
+data/<uuid>/output/
+  metadata.json
+  preview.png
+  result.tif
+```
+
+产品类型、指数名、公式、数据源、时间范围和空间信息写入 `metadata.json`，不通过文件名表达。
+
+## 文档导航
+
+- [V1 总结](v1-summary.md)
 - [项目架构](architecture.md)
-- [栅格工具链](raster-toolchain.md)
-- [Scene 选择算法迭代](scene-selection-evolution.md)
-- [关键设计决策](design-decisions.md)
 - [开发日志](development-log.md)
+- [栅格工具链](raster-toolchain.md)
+- [关键设计决策](design-decisions.md)
+- [Demo Cases](demo-cases.md)
+- [Scene 选择算法迭代](scene-selection-evolution.md)
 - [路线图](roadmap.md)

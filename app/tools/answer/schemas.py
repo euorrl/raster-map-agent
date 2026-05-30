@@ -10,7 +10,18 @@ class FinalAnswerError(RuntimeError):
 
 
 class FinalAnswerRequest(BaseModel):
-    """最终回答生成请求。"""
+    """最终回答生成请求。
+
+    answer_mode 是 answer tool 的直接控制参数：
+    - metadata_summary: 根据 workflow metadata 总结真实执行结果；失败时输出
+      更详细的诊断和正常运行示例。
+    - direct_answer: 对普通问题、当前不支持的产品或 agent 能力介绍类问题
+      直接回答。
+    - question 和 user_query 是 answer tool 的输入参数，分别用于 direct_answer 和
+      metadata_summary 两种模式。answer tool 会根据 answer_mode 选择使用哪个参数。
+    - metadata 是 answer tool 的输入参数，包含 workflow 执行的详细上下文信息，
+      供 answer tool 生成回答时参考。
+    """
 
     answer_mode: AnswerMode
     question: str | None = None

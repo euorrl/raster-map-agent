@@ -6,94 +6,106 @@ from urllib.request import Request, urlopen
 from pydantic import BaseModel, Field
 
 from app.registry import INDEX_REGISTRY
+from app.tools.answer.schemas import AnswerMode
 from app.utils import get_zhipuai_settings
+from app.workflows.templates import (
+    DIRECT_ANSWER_ROUTE,
+    RASTER_PRODUCT_GENERATE_ROUTE,
+    WorkflowRoute,
+    get_workflow_route_answer_modes,
+    get_workflow_template_routes,
+)
 
 AgentPlanStatus = Literal["planned", "failed"]
-AgentResponseMode = Literal["raster_workflow", "direct_answer"]
+AgentRoute = WorkflowRoute
+AgentAnswerMode = AnswerMode
 PlannerLLMClient = Callable[[list[dict[str, str]]], str]
+
 MAX_INITIAL_CLOUD_COVER = 30.0
 DEFAULT_INITIAL_CLOUD_COVER = 20.0
+
 PLAN_FIELDS = {
-    "response_mode",
+    "route",
+    "answer_mode",
+    "response_mode",  # Deprecated planner output accepted for compatibility.
     "aoi_query",
     "index_name",
     "start_date",
     "end_date",
     "max_cloud_cover",
 }
-RESPONSE_MODES = {"raster_workflow", "direct_answer"}
-SUPPORTED_TOOL_NAMES = {
-    "workspace.create_workspace",
-    "raster_prepare.prepare_raster_inputs",
-    "index_calculation.calculate_raster_index",
-    "render_preview.render_index_preview",
-    "metadata.export_metadata",
-    "answer.generate_final_answer",
+ROUTES = set(get_workflow_template_routes())
+ROUTE_ANSWER_MODES = get_workflow_route_answer_modes()
+ANSWER_MODES = set(ROUTE_ANSWER_MODES.values())
+LEGACY_RESPONSE_MODE_ROUTES: dict[str, AgentRoute] = {
+    "raster_workflow": RASTER_PRODUCT_GENERATE_ROUTE,
+    "direct_answer": DIRECT_ANSWER_ROUTE,
 }
-TOOL_CONTRACTS: list[dict[str, Any]] = [
-    {
-        "tool": "workspace.create_workspace",
-        "purpose": "Create an isolated workspace directory for one run.",
-        "inputs": [],
-        "outputs": ["workspace.run_id", "workspace.workspace_dir"],
-    },
-    {
-        "tool": "raster_prepare.prepare_raster_inputs",
-        "purpose": (
-            "Resolve AOI, search/select suitable scenes, and prepare raster "
-            "inputs for the selected registered index."
-        ),
-        "inputs": [
-            "aoi_query",
-            "index_name",
-            "start_date",
-            "end_date",
-            "max_cloud_cover",
-        ],
-        "outputs": [
-            "tool_results.raster_prepare.band_paths",
-            "tool_results.raster_prepare.selected_scenes",
-        ],
-    },
-    {
-        "tool": "index_calculation.calculate_raster_index",
-        "purpose": "Calculate the selected raster index inside the workspace.",
-        "inputs": ["workspace_dir", "index_name"],
-        "outputs": ["tool_results.index_calculation.index_tif_path"],
-    },
-    {
-        "tool": "render_preview.render_index_preview",
-        "purpose": "Render the calculated index GeoTIFF as a visual preview image.",
-        "inputs": ["index_name", "index_tif_path"],
-        "outputs": ["tool_results.render_preview.preview_path"],
-    },
-    {
-        "tool": "metadata.export_metadata",
-        "purpose": "Export run metadata for auditing and final answer generation.",
-        "inputs": ["workspace_dir", "metadata"],
-        "outputs": ["tool_results.metadata.metadata_path", "metadata"],
-    },
-    {
-        "tool": "answer.generate_final_answer",
-        "purpose": (
-            "Generate the final answer. Use metadata_summary mode after a raster "
-            "workflow, or direct_answer mode for unrelated/general questions."
-        ),
-        "inputs": [
-            "metadata_summary: user_query, metadata",
-            "direct_answer: question",
-        ],
-        "outputs": ["final_answer"],
-    },
-]
+AGENT_PROFILE_KEYWORDS = (
+    "你是",
+    "你谁",
+    "您是谁",
+    "您谁",
+    "你是什么",
+    "您是什么",
+    "你如何使用",
+    "您如何使用",
+    "你是干" "您是干",
+    "你是做",
+    "您是做",
+    "你是什么",
+    "你的功能",
+    "你的能力",
+    "你有哪些功能",
+    "你有哪些能力",
+    "你支持什么",
+    "你支持哪些",
+    "你能做什么",
+    "你可以做什么",
+    "可以做什么",
+    "能做什么",
+    "能帮我做什么",
+    "能帮我什么",
+    "能处理什么",
+    "可以处理什么",
+    "支持哪些任务",
+    "支持什么任务",
+    "有什么功能",
+    "有什么能力",
+    "功能介绍",
+    "能力介绍",
+    "使用说明",
+    "怎么使用你",
+    "如何使用你",
+    "介绍一下你",
+    "介绍一下自己",
+    "介绍你",
+    "介绍下你",
+    "介绍下自己",
+    "自我介绍",
+    "关于你",
+    "这个系统能做什么",
+    "这个助手能做什么",
+    "这个工具能做什么",
+    "raster map agent",
+    "raster-map-agent",
+    "what are you",
+    "who are you",
+    "what can you do",
+    "what do you do",
+    "your capabilities",
+    "your functions",
+    "how to use you",
+    "how can i use you",
+    "introduce yourself",
+    "tell me about yourself",
+    "what is raster-map-agent",
+    "what is raster map agent",
+)
 
 
 class AgentPlanRequest(BaseModel):
-    """全局 planner 请求。
-
-    Attributes:
-        user_query: 用户原始自然语言需求。
-    """
+    """全局 planner 请求。"""
 
     user_query: str = Field(min_length=1)
 
@@ -101,12 +113,12 @@ class AgentPlanRequest(BaseModel):
 class AgentPlanResult(BaseModel):
     """全局 planner 输出结果。
 
-    planner 只负责产出结构化计划，不执行任何真实工具。
+    Planner 只负责产出结构化 plan，不执行工具，也不生成工具调用链。
+    compiler 会根据 plan.route 编译 state.tool_calls。
     """
 
     status: AgentPlanStatus
     plan: dict[str, Any] = Field(default_factory=dict)
-    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     rationale: str | None = None
     error: str | None = None
     warnings: list[str] = Field(default_factory=list)
@@ -121,19 +133,26 @@ def build_agent_plan(
     plan_request = (
         AgentPlanRequest(user_query=request) if isinstance(request, str) else request
     )
+    if _is_agent_profile_query(plan_request.user_query):
+        return AgentPlanResult(
+            status="planned",
+            plan={
+                "route": DIRECT_ANSWER_ROUTE,
+                "answer_mode": "direct_answer",
+            },
+            rationale="User asks about raster-map-agent capabilities.",
+        )
 
     try:
         raw_response = _call_planner_llm(plan_request, client)
         parsed_response = _parse_json_object(raw_response)
         plan, warnings = _sanitize_plan(parsed_response, plan_request)
-        tool_calls = _sanitize_tool_calls(parsed_response, plan, warnings)
     except (RuntimeError, ValueError, OSError) as error:
         return AgentPlanResult(status="failed", error=str(error))
 
     return AgentPlanResult(
         status="planned",
         plan=plan,
-        tool_calls=tool_calls,
         rationale=_extract_rationale(parsed_response),
         warnings=warnings,
     )
@@ -147,15 +166,11 @@ def build_agent_plan_update(result: AgentPlanResult) -> dict[str, Any]:
             "planners": {
                 "global": result.model_dump(mode="json"),
             },
-            "tool_plan": {
-                "steps": result.tool_calls,
-            },
         }
     }
 
     if result.status == "planned":
         update["plan"] = result.plan
-        update["metadata"] = {"plan": result.plan}
         update["status"] = "planned"
         if result.warnings:
             update["warnings"] = result.warnings
@@ -214,97 +229,68 @@ def _build_planner_messages(request: AgentPlanRequest) -> list[dict[str, str]]:
         "current_date": date.today().isoformat(),
         "supported_indexes": sorted(INDEX_REGISTRY.keys()),
         "registered_options": _build_registered_option_context(),
-        "tool_contracts": TOOL_CONTRACTS,
+        "workflow_routes": get_workflow_template_routes(),
+        "answer_modes": sorted(ANSWER_MODES),
         "max_cloud_cover_limit": MAX_INITIAL_CLOUD_COVER,
     }
     system_prompt = (
         "你是 raster-map-agent 的全局任务规划器。"
-        "你的职责是把用户的自然语言需求转换成 V1 workflow 可执行的结构化 JSON 计划。"
-        "你只负责规划，不执行工具，不编造注册表之外的产品，不生成最终回答正文。"
+        "你的职责是把用户自然语言需求转换成受约束的结构化 plan。"
+        "你不执行工具，不决定底层工具顺序，不决定 validator、adjuster 或 retry。"
+        "工具链会由系统根据 route 和 workflow template 编译。"
         "你必须只返回一个 JSON object，不要输出 Markdown、解释段落或代码块。"
     )
     user_prompt = (
-        "请根据用户需求生成结构化规划。JSON 必须包含三个顶层字段："
-        "plan、tool_calls、rationale。\n\n"
+        "请根据用户需求生成结构化规划。JSON 必须包含 plan 和 rationale。\n\n"
         "一、输出结构\n"
         "plan 只能包含以下字段：\n"
-        "- response_mode：只能是 raster_workflow 或 direct_answer。\n"
+        "- route：只能是 raster_product_generate 或 direct_answer。\n"
+        "- answer_mode：只能是 metadata_summary 或 direct_answer。\n"
         "- aoi_query：适合 Nominatim 查询的地点字符串，例如 "
         '"Chengdu, Sichuan, China"。\n'
         "- index_name：从 context.supported_indexes 中选择的已注册栅格产品或指数名称。\n"
         "- start_date：YYYY-MM-DD 格式。\n"
         "- end_date：YYYY-MM-DD 格式。\n"
         "- max_cloud_cover：初始优先使用 20，不得超过 context.max_cloud_cover_limit。\n\n"
-        "当 response_mode 是 direct_answer 时，plan 只需要包含 response_mode。\n"
-        "当 response_mode 是 raster_workflow 时，plan 必须包含全部栅格任务字段："
+        "当 route 是 direct_answer 时，plan 只需要包含 route 和 answer_mode。\n"
+        "当 route 是 raster_product_generate 时，plan 必须包含全部栅格任务字段："
         "aoi_query、index_name、start_date、end_date、max_cloud_cover。\n\n"
-        "tool_calls 是工具调用计划列表，每一步必须包含 tool 和 params。"
-        "params 可以为空对象，系统会根据清洗后的 plan 生成最终可信参数。"
-        "rationale 用一句话说明为什么选择该 response_mode、index_name 和日期范围。\n\n"
-        "二、response_mode 选择规则\n"
-        "1. 如果用户请求的是已注册栅格产品、遥感指数、专题图生成、地图生成、"
-        "地理区域分析，并且可以由注册表中的某个选项完成，选择 raster_workflow。\n"
+        "不要输出 tool_calls。不要规划工具调用顺序。不要输出 workspace_dir、"
+        "band_roles、index_formula、scene_limit、max_selected_scenes、validator、"
+        "adjuster 或 retry 参数。系统会根据 route 和 workflow template 编译工具链。\n\n"
+        "二、route 选择规则\n"
+        "1. 如果用户请求的是已注册栅格产品、遥感指数、专题图生成、地图生成或"
+        "地理区域分析，并且可以由注册表中的某个选项完成，选择 "
+        "raster_product_generate，answer_mode 使用 metadata_summary。\n"
         "2. 如果用户的问题与当前栅格地图 workflow 无关，或者只是普通知识问答、"
-        "闲聊、解释概念、询问系统能力，选择 direct_answer。\n"
-        "3. 如果用户请求 population、land type、land cover、temperature "
-        "等当前注册表中不存在的产品，选择 direct_answer，让最终回答节点说明当前不支持，"
-        "不要强行映射到 NDVI/NDWI，也不要运行错误的栅格 workflow。\n\n"
+        "闲聊、解释概念、询问系统能力，选择 direct_answer，answer_mode 使用 "
+        "direct_answer。\n"
+        "3. 如果用户请求 population、land type、land cover、temperature 等当前"
+        "注册表中不存在的产品，选择 direct_answer，让最终回答节点说明当前不支持；"
+        "不要强行映射到 NDVI、NDWI 或其他已有指数。\n\n"
         "三、index_name 选择规则\n"
-        "1. 不要默认选择 NDVI。必须根据用户任务语义和 context.registered_options 选择。\n"
+        "1. 不要默认选择 NDVI，必须根据用户任务语义和 context.registered_options 选择。\n"
         "2. 如果用户明确要求某个已注册选项，就选择该选项。\n"
-        "3. 如果用户没有明确给出产品名，请结合注册选项的名称、公式、波段角色和渲染信息，"
-        "从已注册选项中推断最匹配的一个。\n"
-        "4. 植被、长势、绿度、作物健康相关任务通常匹配 NDVI，前提是 NDVI 已注册。\n"
-        "5. 水体、地表水、湿度、水域提取相关任务通常匹配 NDWI，前提是 NDWI 已注册。\n"
-        "6. 如果没有任何已注册选项明确满足用户任务，选择 direct_answer，不要编造 index_name。\n\n"
+        "3. 植被、长势、绿度、作物健康、植被覆盖相关任务通常匹配 NDVI，前提是 NDVI 已注册。\n"
+        "4. 稀疏植被、裸土背景明显、土壤背景校正相关任务通常匹配 SAVI，前提是 SAVI 已注册。\n"
+        "5. 水体、地表水、水域提取、河流湖泊分布相关任务通常匹配 NDWI，前提是 NDWI 已注册。\n"
+        "6. 植被含水量、地表湿度、干旱胁迫、水分状况相关任务通常匹配 NDMI，前提是 NDMI 已注册。\n"
+        "7. 建成区、城市扩张、不透水面、建筑用地、城市化相关任务通常匹配 NDBI，前提是 NDBI 已注册。\n"
+        "8. 火烧迹地、火灾影响、燃烧区域、植被受损相关任务通常匹配 NBR，前提是 NBR 已注册。\n"
+        "9. 如果没有任何已注册选项明确满足用户任务，选择 direct_answer，不要编造 index_name。\n\n"
         "四、日期推断优先级\n"
         "1. 用户给出完整日期范围时，优先严格使用用户日期，但不得选择未来日期。\n"
-        "2. 用户只给出年份、月份、季节或类似“2024 年”“去年夏天”“今年春季”的模糊时间时，"
+        "2. 用户只给出年份、月份、季节或类似“2024 年”“去年夏天”的模糊时间时，"
         "要补全成合理的 start_date 和 end_date。\n"
-        "   - 指定年份但未指定月份/季节时，根据专题图类型选择该年份内最合理的窗口；"
-        "NDVI/植被优先使用当地生长季，NDWI/水体优先使用水体可观测性较稳定的季节或近季节窗口。\n"
-        "   - 指定月份时，使用该月第一天到该月最后一天。\n"
-        "   - 指定季节时，北半球春季 3-5 月、夏季 6-8 月、秋季 9-11 月、冬季 12-2 月；"
-        "南半球季节相反。跨年冬季要正确处理年份。\n"
-        "3. 用户完全没有给时间时，根据专题图类型选择靠近 context.current_date、"
-        "完整且不在未来的合理日期范围。\n"
-        "   - NDVI/植被：优先最近一个完整生长季；如果当前生长季尚未完整结束，"
-        "使用上一完整生长季。\n"
-        "   - NDWI/水体：优先最近一个完整的 1-3 个月观测窗口，避免未来日期。\n"
-        "   - 其他已注册产品：根据产品语义选择最近的完整可观测窗口。\n"
-        "4. 如果推断出的 end_date 晚于 context.current_date，必须改用最近一个已经完整结束的合理窗口。\n\n"
-        "五、工具能力、输入和输出\n"
-        "请参考 context.tool_contracts。各工具含义如下：\n"
-        "- workspace.create_workspace：创建本次任务工作目录；输入无；"
-        "输出 workspace.run_id 和 workspace.workspace_dir。\n"
-        "- raster_prepare.prepare_raster_inputs：根据 AOI、指数、日期、云量检索并准备栅格输入；"
-        "输入 aoi_query、index_name、start_date、end_date、max_cloud_cover；"
-        "输出准备好的波段路径和场景信息。\n"
-        "- index_calculation.calculate_raster_index：计算指定指数；"
-        "输入 workspace_dir、index_name；输出 index_tif_path。\n"
-        "- render_preview.render_index_preview：渲染指数预览图；"
-        "输入 index_name、index_tif_path；输出 preview_path。\n"
-        "- metadata.export_metadata：导出任务元数据；"
-        "输入 workspace_dir、metadata；"
-        "输出 metadata_path 和 metadata。\n"
-        "- answer.generate_final_answer：生成最终回答；"
-        "metadata_summary 模式使用 user_query 和 metadata，direct_answer 模式使用 question。\n\n"
-        "六、工具顺序规则\n"
-        "1. raster_workflow 的默认顺序是：workspace.create_workspace -> "
-        "raster_prepare.prepare_raster_inputs -> "
-        "index_calculation.calculate_raster_index -> "
-        "render_preview.render_index_preview -> metadata.export_metadata -> "
-        "answer.generate_final_answer。\n"
-        "2. direct_answer 只需要 answer.generate_final_answer。\n"
-        "3. tool 只能从 context.tool_contracts 中列出的名称选择。\n"
-        "4. 不要把工具内部参数写进 plan，例如 data_source、need_render、include_colorbar、"
-        "need_metadata、scene_limit、max_selected_scenes、workspace_dir。\n\n"
-        "七、示例\n"
-        "用户问“生成成都 2024 年 NDVI 图”：选择 raster_workflow，"
-        "index_name 为 NDVI，日期根据 2024 年植被专题补成合理生长季。\n"
-        "用户问“什么是遥感”：选择 direct_answer。\n"
-        "用户问“生成成都人口密度图”，但 population 未注册：选择 direct_answer，"
-        "不要改成 NDVI 或 NDWI。\n\n"
+        "3. 指定年份但未指定月份/季节时，根据专题图类型选择该年份内合理窗口；"
+        "NDVI/植被优先生长季，NDWI/水体优先可观测性较稳定的窗口。\n"
+        "4. 完全没有时间时，根据专题图类型选择靠近 context.current_date、完整且"
+        "不在未来的合理日期范围。\n\n"
+        "五、示例\n"
+        "用户问“生成成都 2024 年 NDVI 图”：选择 raster_product_generate，"
+        "answer_mode 为 metadata_summary，index_name 为 NDVI。\n"
+        "用户问“什么是遥感”：选择 direct_answer，answer_mode 为 direct_answer。\n"
+        "用户问“生成成都人口密度图”，但 population 未注册：选择 direct_answer。\n\n"
         f"context:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
         "\n\n"
         f"user_query:\n{request.user_query}"
@@ -337,6 +323,11 @@ def _build_registered_option_context() -> list[dict[str, Any]]:
     ]
 
 
+def _is_agent_profile_query(user_query: str) -> bool:
+    normalized = user_query.strip().lower()
+    return any(keyword in normalized for keyword in AGENT_PROFILE_KEYWORDS)
+
+
 def _parse_json_object(raw_response: str) -> dict[str, Any]:
     text = raw_response.strip()
     if text.startswith("```"):
@@ -364,14 +355,25 @@ def _sanitize_plan(
         raise ValueError("Planner response plan must be a JSON object.")
 
     warnings: list[str] = []
-    response_mode = _sanitize_response_mode(raw_plan.get("response_mode"))
-    if response_mode == "direct_answer":
+    route = _sanitize_route(
+        route_value=raw_plan.get("route"),
+        answer_mode_value=raw_plan.get("answer_mode"),
+        legacy_response_mode=raw_plan.get("response_mode"),
+        warnings=warnings,
+    )
+    answer_mode = _sanitize_answer_mode(
+        value=raw_plan.get("answer_mode"),
+        route=route,
+        legacy_response_mode=raw_plan.get("response_mode"),
+        warnings=warnings,
+    )
+    if route == "direct_answer":
         plan = {
-            "response_mode": response_mode,
+            "route": route,
+            "answer_mode": answer_mode,
         }
-        ignored_fields = sorted(
-            set(raw_plan) - PLAN_FIELDS - {"rationale", "tool_calls"}
-        )
+        direct_answer_fields = {"route", "answer_mode", "response_mode"}
+        ignored_fields = sorted(set(raw_plan) - direct_answer_fields - {"rationale"})
         if ignored_fields:
             ignored_field_names = ", ".join(ignored_fields)
             warnings.append(
@@ -381,7 +383,8 @@ def _sanitize_plan(
         return plan, warnings
 
     plan = {
-        "response_mode": response_mode,
+        "route": route,
+        "answer_mode": answer_mode,
         "aoi_query": _sanitize_aoi_query(raw_plan, request, warnings),
         "index_name": _sanitize_index_name(raw_plan.get("index_name")),
         "start_date": _sanitize_date(raw_plan.get("start_date"), "start_date"),
@@ -392,147 +395,12 @@ def _sanitize_plan(
     if plan["start_date"] > plan["end_date"]:
         raise ValueError("Planner start_date cannot be later than end_date.")
 
-    ignored_fields = sorted(set(raw_plan) - PLAN_FIELDS - {"rationale", "tool_calls"})
+    ignored_fields = sorted(set(raw_plan) - PLAN_FIELDS - {"rationale"})
     if ignored_fields:
         ignored_field_names = ", ".join(ignored_fields)
         warnings.append(f"Ignored unsupported planner fields: {ignored_field_names}.")
 
     return plan, warnings
-
-
-def _sanitize_tool_calls(
-    parsed_response: dict[str, Any],
-    plan: dict[str, Any],
-    warnings: list[str],
-) -> list[dict[str, Any]]:
-    if plan.get("response_mode") == "direct_answer":
-        return [
-            {
-                "step": 1,
-                "tool": "answer.generate_final_answer",
-                "params": _canonical_tool_params(
-                    "answer.generate_final_answer",
-                    plan,
-                ),
-            }
-        ]
-
-    raw_tool_calls = parsed_response.get("tool_calls")
-    nested_plan = parsed_response.get("plan")
-    if raw_tool_calls is None and isinstance(nested_plan, dict):
-        raw_tool_calls = nested_plan.get("tool_calls")
-
-    if not isinstance(raw_tool_calls, list) or not raw_tool_calls:
-        warnings.append(
-            "Planner did not provide tool_calls; default V1 tool order was used."
-        )
-        return _default_tool_calls(plan)
-
-    tool_calls: list[dict[str, Any]] = []
-    for item in raw_tool_calls:
-        if not isinstance(item, dict):
-            warnings.append("Ignored invalid planner tool call.")
-            continue
-
-        tool_name = item.get("tool")
-        if tool_name not in SUPPORTED_TOOL_NAMES:
-            warnings.append(f"Ignored unsupported planner tool: {tool_name}.")
-            continue
-
-        tool_calls.append(
-            {
-                "step": len(tool_calls) + 1,
-                "tool": tool_name,
-                "params": _canonical_tool_params(tool_name, plan),
-            }
-        )
-
-    if not tool_calls:
-        warnings.append(
-            "Planner tool_calls were unusable; default V1 tool order was used."
-        )
-        return _default_tool_calls(plan)
-
-    return tool_calls
-
-
-def _default_tool_calls(plan: dict[str, Any]) -> list[dict[str, Any]]:
-    if plan.get("response_mode") == "direct_answer":
-        return [
-            {
-                "step": 1,
-                "tool": "answer.generate_final_answer",
-                "params": _canonical_tool_params(
-                    "answer.generate_final_answer",
-                    plan,
-                ),
-            }
-        ]
-
-    return [
-        {
-            "step": index + 1,
-            "tool": tool_name,
-            "params": _canonical_tool_params(tool_name, plan),
-        }
-        for index, tool_name in enumerate(
-            [
-                "workspace.create_workspace",
-                "raster_prepare.prepare_raster_inputs",
-                "index_calculation.calculate_raster_index",
-                "render_preview.render_index_preview",
-                "metadata.export_metadata",
-                "answer.generate_final_answer",
-            ]
-        )
-    ]
-
-
-def _canonical_tool_params(tool_name: str, plan: dict[str, Any]) -> dict[str, Any]:
-    if tool_name == "workspace.create_workspace":
-        return {}
-
-    if tool_name == "raster_prepare.prepare_raster_inputs":
-        return {
-            "aoi_query": plan["aoi_query"],
-            "index_name": plan["index_name"],
-            "start_date": plan["start_date"],
-            "end_date": plan["end_date"],
-            "max_cloud_cover": plan["max_cloud_cover"],
-        }
-
-    if tool_name == "index_calculation.calculate_raster_index":
-        return {
-            "workspace_dir": "$workspace.workspace_dir",
-            "index_name": plan["index_name"],
-        }
-
-    if tool_name == "render_preview.render_index_preview":
-        return {
-            "index_name": plan["index_name"],
-            "index_tif_path": "$tool_results.index_calculation.index_tif_path",
-        }
-
-    if tool_name == "metadata.export_metadata":
-        return {
-            "workspace_dir": "$workspace.workspace_dir",
-            "metadata": "$metadata",
-        }
-
-    if tool_name == "answer.generate_final_answer":
-        if plan.get("response_mode") == "direct_answer":
-            return {
-                "answer_mode": "direct_answer",
-                "question": "$state.user_query",
-            }
-
-        return {
-            "answer_mode": "metadata_summary",
-            "user_query": "$state.user_query",
-            "metadata": "$metadata",
-        }
-
-    return {}
 
 
 def _extract_rationale(parsed_response: dict[str, Any]) -> str | None:
@@ -560,21 +428,96 @@ def _sanitize_aoi_query(
     return request.user_query.strip()
 
 
-def _sanitize_response_mode(value: Any) -> AgentResponseMode:
+def _sanitize_route(
+    route_value: Any,
+    answer_mode_value: Any,
+    legacy_response_mode: Any,
+    warnings: list[str],
+) -> AgentRoute:
+    inferred_route = _infer_route(
+        answer_mode_value=answer_mode_value,
+        legacy_response_mode=legacy_response_mode,
+    )
+    if route_value is None:
+        return inferred_route or RASTER_PRODUCT_GENERATE_ROUTE
+
+    if not isinstance(route_value, str):
+        fallback_route = inferred_route or RASTER_PRODUCT_GENERATE_ROUTE
+        warnings.append(f"Ignored invalid planner route; using {fallback_route}.")
+        return fallback_route
+
+    route = route_value.strip()
+    if route not in ROUTES:
+        fallback_route = inferred_route or RASTER_PRODUCT_GENERATE_ROUTE
+        warnings.append(
+            f"Ignored unsupported planner route: {route_value}; using "
+            f"{fallback_route}."
+        )
+        return fallback_route
+
+    if inferred_route is not None and route != inferred_route:
+        warnings.append(
+            f"Ignored planner route {route}; answer mode requires " f"{inferred_route}."
+        )
+        return inferred_route
+
+    return cast(AgentRoute, route)
+
+
+def _sanitize_answer_mode(
+    value: Any,
+    route: AgentRoute,
+    legacy_response_mode: Any,
+    warnings: list[str],
+) -> AgentAnswerMode:
+    expected_answer_mode = ROUTE_ANSWER_MODES[route]
     if value is None:
-        return "raster_workflow"
+        return expected_answer_mode
 
     if not isinstance(value, str):
-        raise ValueError("Planner response_mode must be a string.")
-
-    response_mode = value.strip().lower()
-    if response_mode not in RESPONSE_MODES:
-        supported = ", ".join(sorted(RESPONSE_MODES))
-        raise ValueError(
-            f"Unsupported planner response_mode: {value}. Supports: {supported}"
+        warnings.append(
+            f"Ignored invalid planner answer_mode; using {expected_answer_mode}."
         )
+        return expected_answer_mode
 
-    return cast(AgentResponseMode, response_mode)
+    answer_mode = value.strip().lower()
+    if answer_mode not in ANSWER_MODES:
+        warnings.append(
+            f"Ignored unsupported planner answer_mode: {value}; using "
+            f"{expected_answer_mode}."
+        )
+        return expected_answer_mode
+
+    if answer_mode != expected_answer_mode:
+        warnings.append(
+            f"Ignored planner answer_mode {answer_mode}; route {route} requires "
+            f"{expected_answer_mode}."
+        )
+        return expected_answer_mode
+
+    if legacy_response_mode is not None:
+        warnings.append("Planner response_mode is deprecated; use answer_mode.")
+
+    return cast(AgentAnswerMode, answer_mode)
+
+
+def _infer_route(
+    answer_mode_value: Any,
+    legacy_response_mode: Any,
+) -> AgentRoute | None:
+    if isinstance(answer_mode_value, str):
+        answer_mode = answer_mode_value.strip().lower()
+        if answer_mode == "direct_answer":
+            return DIRECT_ANSWER_ROUTE
+        if answer_mode == "metadata_summary":
+            return RASTER_PRODUCT_GENERATE_ROUTE
+
+    if isinstance(legacy_response_mode, str):
+        response_mode = legacy_response_mode.strip().lower()
+        if response_mode in LEGACY_RESPONSE_MODE_ROUTES:
+            return LEGACY_RESPONSE_MODE_ROUTES[response_mode]
+
+    return None
 
 
 def _sanitize_index_name(value: Any) -> str:

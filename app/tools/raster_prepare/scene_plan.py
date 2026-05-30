@@ -92,8 +92,13 @@ def build_raster_scene_plan_from_candidates(
     candidate_scenes = list(store.scenes.values())
 
     if not candidate_scenes:
-        raise RasterDownloadError(
-            "No raster scenes found for the requested parameters."
+        return RasterScenePlanResult(
+            scene_ids=[],
+            assets=[],
+            diagnostics=_build_no_scene_diagnostics(min_coverage_ratio),
+            data_source=config.name,
+            provider=config.provider,
+            collection=config.collection,
         )
 
     selected_scenes = _select_scenes_by_coverage(
@@ -127,6 +132,29 @@ def build_raster_scene_plan_from_candidates(
         data_source=config.name,
         provider=config.provider,
         collection=config.collection,
+    )
+
+
+def _build_no_scene_diagnostics(
+    min_coverage_ratio: float,
+) -> RasterScenePlanDiagnostics:
+    """构造没有找到候选 scene 时的可重试诊断。"""
+
+    return RasterScenePlanDiagnostics(
+        coverage_status="not_covered",
+        coverage_ratio=0,
+        min_coverage_ratio=min_coverage_ratio,
+        is_retriable=True,
+        failure_reason="no_raster_scenes_found",
+        message=(
+            "No raster scenes found for the requested parameters. "
+            "Try expanding date range or relaxing cloud cover."
+        ),
+        suggested_actions=[
+            "expand_date_range",
+            "increase_max_cloud_cover",
+        ],
+        selected_scene_count=0,
     )
 
 

@@ -2,10 +2,11 @@ import json
 
 import numpy as np
 import pytest
-import rasterio
-from rasterio.transform import from_origin
 
-from app.tools.raster_prepare import (
+rasterio = pytest.importorskip("rasterio")
+from rasterio.transform import from_origin  # noqa: E402
+
+from app.tools.raster_prepare import (  # noqa: E402
     RasterClipError,
     RasterClipRequest,
     clip_raster_to_aoi,

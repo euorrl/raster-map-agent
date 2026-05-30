@@ -4,12 +4,15 @@ from pathlib import Path
 import shutil
 
 from app.registry import resolve_raster_product_config
-from app.tools.raster_prepare.aoi import resolve_administrative_aoi
-from app.tools.raster_prepare.clip import clip_raster_to_aoi
-from app.tools.raster_prepare.download import download_raster_assets
-from app.tools.raster_prepare.mosaic import mosaic_rasters_by_band
-from app.tools.raster_prepare.scene_plan import build_raster_scene_plan
+from app.tools.raster_prepare import (
+    build_raster_scene_plan,
+    clip_raster_to_aoi,
+    download_raster_assets,
+    mosaic_rasters_by_band,
+    resolve_administrative_aoi,
+)
 from app.tools.raster_prepare.schemas import (
+    AOI_DIRNAME,
     AOIRequest,
     MOSAIC_RASTER_DIRNAME,
     OUTPUT_DIRNAME,
@@ -70,12 +73,18 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
             scene_plan.diagnostics.coverage_ratio,
             scene_plan.diagnostics.min_coverage_ratio,
         )
+        _remove_intermediate_dirs(
+            workspace_dir=workspace_dir,
+            dirnames=[AOI_DIRNAME],
+        )
         return RasterPrepareResult(
             workspace_dir=str(workspace_dir),
             output_dir=str(output_dir),
             boundary_geojson_path=aoi.boundary_geojson_path,
             index_name=product_config.index_name,
             data_source=product_config.data_source,
+            provider=scene_plan.provider,
+            collection=scene_plan.collection,
             required_bands=product_config.required_bands,
             band_roles=product_config.band_roles,
             index_formula=product_config.index_formula,
@@ -106,7 +115,7 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
 
     _remove_intermediate_dirs(
         workspace_dir=workspace_dir,
-        dirnames=[RASTER_DIRNAME, MOSAIC_RASTER_DIRNAME],
+        dirnames=[AOI_DIRNAME, RASTER_DIRNAME, MOSAIC_RASTER_DIRNAME],
     )
 
     return RasterPrepareResult(
@@ -115,6 +124,8 @@ def prepare_raster_inputs(request: RasterPrepareRequest) -> RasterPrepareResult:
         boundary_geojson_path=aoi.boundary_geojson_path,
         index_name=product_config.index_name,
         data_source=product_config.data_source,
+        provider=scene_plan.provider,
+        collection=scene_plan.collection,
         required_bands=product_config.required_bands,
         band_roles=product_config.band_roles,
         index_formula=product_config.index_formula,

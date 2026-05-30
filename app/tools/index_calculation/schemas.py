@@ -42,7 +42,7 @@ class IndexCalculationRequest(BaseModel):
     def output_path(self) -> Path:
         """指数 GeoTIFF 输出路径。"""
 
-        filename = self.output_filename or f"{self.index_name.lower()}.tif"
+        filename = self.output_filename or "result.tif"
         return self.output_dir / filename
 
     @property

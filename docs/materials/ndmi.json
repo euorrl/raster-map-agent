@@ -1,0 +1,47 @@
+{
+  "area": {
+    "aoi_query": "Guangzhou, Guangdong, China"
+  },
+  "product": {
+    "family": "raster",
+    "method": {
+      "formula": "(nir - swir) / (nir + swir)",
+      "name": "index_formula"
+    },
+    "name": "NDMI",
+    "type": "index"
+  },
+  "quality": {
+    "coverage_ratio": 0.9993561244697494,
+    "coverage_status": "covered",
+    "min_coverage_ratio": 0.9,
+    "raster_prepare_validation_status": "passed",
+    "selected_scene_count": 2
+  },
+  "source": {
+    "data_source": "sentinel2",
+    "provider": "earth_search"
+  },
+  "spatial": {
+    "bounds": {
+      "bottom": 2497280.0,
+      "left": 699960.0,
+      "right": 809760.0,
+      "top": 2650370.0
+    },
+    "crs": "EPSG:32649",
+    "height": 15309,
+    "resolution": {
+      "unit": "metre",
+      "x": 10.0,
+      "y": 10.0
+    },
+    "resolution_meters": 10.0,
+    "width": 10980
+  },
+  "time_range": {
+    "end_date": "2024-08-31",
+    "max_cloud_cover": 20.0,
+    "start_date": "2023-11-01"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "area": {
+    "aoi_query": "Paris, France"
+  },
+  "product": {
+    "family": "raster",
+    "method": {
+      "formula": "1.5 * (nir - red) / (nir + red + 0.5)",
+      "name": "index_formula"
+    },
+    "name": "SAVI",
+    "type": "index"
+  },
+  "quality": {
+    "coverage_ratio": 0.9999999999999993,
+    "coverage_status": "covered",
+    "min_coverage_ratio": 0.9,
+    "raster_prepare_validation_status": "passed",
+    "selected_scene_count": 1
+  },
+  "source": {
+    "data_source": "sentinel2",
+    "provider": "earth_search"
+  },
+  "spatial": {
+    "bounds": {
+      "bottom": 5407160.0,
+      "left": 443080.0,
+      "right": 461100.0,
+      "top": 5416770.0
+    },
+    "crs": "EPSG:32631",
+    "height": 961,
+    "resolution": {
+      "unit": "metre",
+      "x": 10.0,
+      "y": 10.0
+    },
+    "resolution_meters": 10.0,
+    "width": 1802
+  },
+  "time_range": {
+    "end_date": "2026-05-30",
+    "max_cloud_cover": 20.0,
+    "start_date": "2026-05-01"
+  }
+}

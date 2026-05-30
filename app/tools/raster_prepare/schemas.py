@@ -98,7 +98,7 @@ class RasterScenePlanRequest(BaseModel):
     max_selected_scenes: int = Field(default=20, ge=1, le=100)
     contribution_tolerance: float = Field(default=0.95, ge=0, le=1)
     min_scene_overlap_ratio: float = Field(default=0, ge=0, le=1)
-    min_coverage_ratio: float = Field(default=0.7, ge=0, le=1)
+    min_coverage_ratio: float = Field(default=0.9, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_scene_plan_request(self):
@@ -242,7 +242,7 @@ class RasterPrepareRequest(BaseModel):
     max_selected_scenes: int = Field(default=20, ge=1, le=100)
     contribution_tolerance: float = Field(default=0.95, ge=0, le=1)
     min_scene_overlap_ratio: float = Field(default=0, ge=0, le=1)
-    min_coverage_ratio: float = Field(default=0.7, ge=0, le=1)
+    min_coverage_ratio: float = Field(default=0.9, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_prepare_request(self):
@@ -278,6 +278,8 @@ class RasterPrepareResult(BaseModel):
     boundary_geojson_path: str
     index_name: str
     data_source: str
+    provider: str | None = None
+    collection: str | None = None
     required_bands: list[str]
     band_roles: dict[str, str]
     index_formula: str

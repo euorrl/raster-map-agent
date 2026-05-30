@@ -1,28 +1,28 @@
 import pytest
 
-from app.agent.policies import (
-    build_retry_exhausted_update,
-    can_retry_tool,
-    get_agent_tool_policy,
-    get_tool_retry_count,
-)
 from app.agent.adjusters import adjust_raster_prepare_plan
 from app.agent.validators import validate_raster_prepare_result
 from app.schemas import AgentState
+from app.workflows.tool_rules import (
+    build_retry_exhausted_update,
+    can_retry_tool,
+    get_tool_retry_count,
+    get_tool_rule,
+)
 
 
-def test_get_agent_tool_policy_returns_raster_prepare_policy():
-    policy = get_agent_tool_policy("raster_prepare")
+def test_get_tool_rule_returns_raster_prepare_rule():
+    rule = get_tool_rule("raster_prepare")
 
-    assert policy.tool_name == "raster_prepare"
-    assert policy.validator is validate_raster_prepare_result
-    assert policy.adjuster is adjust_raster_prepare_plan
-    assert policy.max_retries == 5
+    assert rule.tool_call_id == "raster_prepare"
+    assert rule.validator is validate_raster_prepare_result
+    assert rule.adjuster is adjust_raster_prepare_plan
+    assert rule.max_retries == 5
 
 
-def test_get_agent_tool_policy_rejects_unknown_tool():
-    with pytest.raises(ValueError, match="Unsupported agent tool policy"):
-        get_agent_tool_policy("unknown_tool")
+def test_get_tool_rule_rejects_unknown_tool():
+    with pytest.raises(ValueError, match="Unsupported tool rule"):
+        get_tool_rule("unknown_tool")
 
 
 def test_can_retry_tool_requires_retryable_validation_status():
@@ -76,7 +76,8 @@ def test_build_retry_exhausted_update_records_runtime_context():
     update = build_retry_exhausted_update(state, "raster_prepare")
 
     assert update["status"] == "failed"
-    assert update["errors"] == ["raster_prepare reached retry limit after 5 retries."]
+    assert "raster_prepare reached retry limit after 5 retries." in update["errors"][0]
+    assert "可能原因" in update["errors"][0]
     assert update["runtime"]["retry_exhausted"]["raster_prepare"] == {
         "retry_count": 5,
         "max_retries": 5,

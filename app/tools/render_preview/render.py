@@ -1,7 +1,10 @@
 """指数 GeoTIFF 预览图渲染工具。"""
 
+import warnings
+
 import numpy as np
 import rasterio
+from rasterio.errors import NotGeoreferencedWarning
 from rasterio.enums import Resampling
 
 from app.registry import get_index_config
@@ -35,6 +38,33 @@ DIGIT_FONT = {
     "7": ["111", "001", "001", "001", "001"],
     "8": ["111", "101", "111", "101", "111"],
     "9": ["111", "101", "111", "001", "111"],
+}
+
+SUPPORTED_COLORMAPS: dict[str, tuple[np.ndarray, np.ndarray]] = {
+    "greens": (
+        np.array([247, 252, 245], dtype="float32"),
+        np.array([0, 109, 44], dtype="float32"),
+    ),
+    "ylgn": (
+        np.array([255, 255, 204], dtype="float32"),
+        np.array([35, 132, 67], dtype="float32"),
+    ),
+    "blues": (
+        np.array([247, 251, 255], dtype="float32"),
+        np.array([8, 48, 107], dtype="float32"),
+    ),
+    "brbg": (
+        np.array([84, 48, 5], dtype="float32"),
+        np.array([0, 60, 48], dtype="float32"),
+    ),
+    "oranges": (
+        np.array([255, 245, 235], dtype="float32"),
+        np.array([127, 39, 4], dtype="float32"),
+    ),
+    "rdylgn": (
+        np.array([165, 0, 38], dtype="float32"),
+        np.array([0, 104, 55], dtype="float32"),
+    ),
 }
 
 
@@ -297,33 +327,27 @@ def _get_colormap_colors(colormap: str) -> tuple[np.ndarray, np.ndarray]:
     """返回 V1 支持的简化色带端点。"""
 
     normalized_colormap = colormap.lower()
-    if normalized_colormap == "greens":
-        return (
-            np.array([247, 252, 245], dtype="float32"),
-            np.array([0, 109, 44], dtype="float32"),
-        )
-    if normalized_colormap == "blues":
-        return (
-            np.array([247, 251, 255], dtype="float32"),
-            np.array([8, 48, 107], dtype="float32"),
-        )
-
-    raise RenderPreviewError(f"Unsupported render colormap: {colormap}")
+    try:
+        return SUPPORTED_COLORMAPS[normalized_colormap]
+    except KeyError as error:
+        raise RenderPreviewError(f"Unsupported render colormap: {colormap}") from error
 
 
 def _write_png(request: RenderPreviewRequest, rgba: np.ndarray) -> None:
     """写出 RGBA PNG 预览图。"""
 
-    with rasterio.open(
-        request.output_path,
-        "w",
-        driver="PNG",
-        height=rgba.shape[1],
-        width=rgba.shape[2],
-        count=4,
-        dtype="uint8",
-    ) as destination:
-        destination.write(rgba)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+        with rasterio.open(
+            request.output_path,
+            "w",
+            driver="PNG",
+            height=rgba.shape[1],
+            width=rgba.shape[2],
+            count=4,
+            dtype="uint8",
+        ) as destination:
+            destination.write(rgba)
 
 
 def _get_preview_shape(height: int, width: int, max_size: int) -> tuple[int, int]:

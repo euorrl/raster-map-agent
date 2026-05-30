@@ -11,10 +11,15 @@ class MetadataExportError(RuntimeError):
 
 
 class MetadataExportRequest(BaseModel):
-    """Metadata 导出请求。"""
+    """Metadata 导出请求。
+
+    workflow_state 是调用节点传入的 AgentState 快照。metadata tool 会优先从
+    真实 tool_results 抽取产品输出信息，并从实际 GeoTIFF 读取空间信息，而不是
+    原样导出完整 state。
+    """
 
     workspace_dir: Path
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    workflow_state: dict[str, Any] = Field(default_factory=dict)
     output_filename: str = Field(default="metadata.json", min_length=1)
 
     @property
@@ -48,3 +53,4 @@ class MetadataExportResult(BaseModel):
     """Metadata 导出结果。"""
 
     metadata_path: str
+    product_info: dict[str, Any] = Field(default_factory=dict)
