@@ -1,101 +1,93 @@
 # Raster Map Agent
 
-Raster Map Agent 是一个自然语言驱动的遥感制图 Agent 项目。当前目标是完成一个本地可运行的 V1：用户输入制图需求后，系统能够规划任务、准备真实 Sentinel-2 栅格数据、计算 NDVI/NDWI 等已注册产品、渲染预览图、导出 metadata，并生成最终回答。
+Raster Map Agent 是一个自然语言驱动的 **local V1 Raster Workflow Agent**。用户用自然语言描述想生成的遥感专题图，系统会规划任务、使用真实 Sentinel-2 数据运行受控 workflow，并输出 GeoTIFF、预览图和精简 metadata。
 
-## 当前进展
+当前项目不是 production-ready GIS 平台，也不是通用遥感产品引擎；它是一个本地端到端可运行的 V1 agent，核心目标是验证自然语言规划、受控工具链执行和遥感产品生成流程。
 
-已经完成：
+## 当前 V1 状态
 
-- Python 项目骨架、测试、flake8、CI 和 MkDocs / ReadTheDocs 配置
-- 动态 `AgentState`
-- 真实 planner 节点接入
-- workflow template 注册表
-- workflow tool rules 注册表
-- workspace 创建工具
-- Sentinel-2 栅格数据准备链条
-- NDVI/NDWI 产品注册表
-- 指数 GeoTIFF 计算工具
-- 指数 PNG 预览渲染工具
-- metadata 导出工具
-- final answer 生成工具
-- `raster_prepare` validator 与 adjuster
-- 真实工具节点编排的 V1 workflow 骨架
-- 缺少 LangGraph 时的线性 fallback runner，便于轻量环境测试
+V1 已经完成本地端到端 raster map generation workflow：
 
-真实工具链目前可以产出：
+- planner 解析用户请求并决定 route；
+- 制图任务进入 `raster_product_generate`；
+- 普通知识问题、系统能力问题或当前不支持的产品请求进入 `direct_answer`；
+- raster route 使用真实 Sentinel-2 STAC 查询、影像下载、AOI 裁剪、指数计算、预览图渲染、metadata 导出和 final answer 生成；
+- workflow 通过 compiler 生成受控 `tool_calls`，executor 单步执行；
+- `raster_prepare` 具备 validator / adjuster retry loop；
+- 失败时返回结构化错误信息或失败回答；
+- 非制图任务不会强行运行 raster workflow。
 
-```text
-data/<uuid>/clipped_raster/<band>_clipped.tif
-data/<uuid>/output/result.tif
-data/<uuid>/output/preview.png
-data/<uuid>/output/metadata.json
-```
+## 支持产品
 
-## 当前架构
+当前真实执行链路基于 Sentinel-2。Registry 中保留了 Landsat 配置，但 V1 的 `raster_prepare` 只接入 Sentinel-2。
 
-V1 采用受控 Agent workflow，而不是完全自由 tool-calling agent。
+| 产品 | 含义 | 主要用途 | V1 支持 | 数据源 |
+| --- | --- | --- | --- | --- |
+| NDVI | Normalized Difference Vegetation Index | 植被绿度、植被覆盖、作物长势 | 是 | Sentinel-2 |
+| SAVI | Soil Adjusted Vegetation Index | 稀疏植被、裸土背景较强区域的植被分析 | 是 | Sentinel-2 |
+| NDWI | Normalized Difference Water Index | 水体、水域分布、地表水提取 | 是 | Sentinel-2 |
+| NDMI | Normalized Difference Moisture Index | 植被含水量、地表湿度、干旱胁迫 | 是 | Sentinel-2 |
+| NDBI | Normalized Difference Built-up Index | 建成区、不透水面、城市扩张 | 是 | Sentinel-2 |
+| NBR | Normalized Burn Ratio | 火烧迹地、火灾影响、植被受损 | 是 | Sentinel-2 |
+
+DEM、population、night lights、land cover、GEE、多数据源自动选择等不属于当前 V1 已实现功能。
+
+## 高层架构
+
+当前 workflow 是受控型 tool-call workflow：
 
 ```text
 planner
--> registry
--> workspace
--> raster_prepare
--> raster_prepare_validator
--> product_generation
--> answer
+-> route decision
+-> registry if raster task
+-> compiler
+-> execute_tool loop
+-> optional validate_tool / adjust_tool loop
+-> final answer
 ```
 
-其中 `product_generation` 当前封装：
+`raster_product_generate` route 的受控工具链：
 
 ```text
-index_calculation
-render_preview
-metadata export
+workspace.create_workspace
+raster_prepare.prepare_raster_inputs
+index_calculation.calculate_raster_index
+render_preview.render_index_preview
+metadata.export_metadata
+answer.generate_final_answer
 ```
 
-Planner 只负责生成结构化 `state.plan`。工具顺序由 workflow/template 控制，compiler 会根据 `plan + registry + workflow template` 生成 `state.tool_calls`。
-
-## Planner 输出
-
-全局 planner 位于：
+`direct_answer` route 只执行：
 
 ```text
-app/agent/planners/zhipu_planner.py
+answer.generate_final_answer
 ```
 
-它只写入：
+项目结构：
 
-- `state.plan`
-- `state.runtime["planners"]["global"]`
-
-正常栅格产品任务示例：
-
-```json
-{
-  "route": "raster_product_generate",
-  "answer_mode": "metadata_summary",
-  "aoi_query": "Chengdu, Sichuan, China",
-  "index_name": "NDVI",
-  "start_date": "2024-06-01",
-  "end_date": "2024-08-31",
-  "max_cloud_cover": 20
-}
+```text
+app/
+  agent/                 # planner、workflow nodes、validator、adjuster
+  registry/              # Sentinel-2 指数产品配置
+  schemas/               # AgentState
+  tools/                 # 可独立测试的领域工具
+  workflows/             # templates、compiler、executor、tool rules
+docs/                    # 设计与开发文档
+scripts/                 # 本地运行脚本
+tests/                   # 单元测试
+data/                    # 本地运行产物，不进入 git
 ```
 
-直接回答任务示例：
+## 本地运行
 
-```json
-{
-  "route": "direct_answer",
-  "answer_mode": "direct_answer"
-}
+安装依赖：
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
-Planner 不生成 `tool_calls`，也不输出 `workspace_dir`、`band_roles`、`index_formula`、`scene_limit`、`max_selected_scenes` 等内部工程参数。
-
-## 本地环境变量
-
-真实密钥只放在本地 `.env`，不要提交。`.env.example` 保留字段模板：
+配置 `.env`：
 
 ```env
 ZHIPUAI_API_KEY=
@@ -104,40 +96,78 @@ ZHIPUAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 DATA_DIR=./data
 ```
 
-全局 planner、`raster_prepare` adjuster 和 final answer 工具会通过这些配置调用智谱模型。测试中使用 fake client 或 monkeypatch，不依赖真实网络和 API key。
-
-## 项目结构
-
-```text
-app/
-  agent/                 # nodes、planner、validator、adjuster
-  registry/              # 栅格产品、指数、数据源能力注册表
-  schemas/               # AgentState
-  tools/                 # 可独立运行的领域工具
-  workflows/             # workflow graph、templates、tool rules
-docs/                    # MkDocs / ReadTheDocs 文档
-scripts/                 # 本地调试脚本
-tests/                   # 单元测试
-data/                    # 本地运行产物，不进入 git
-```
-
-## 验证
-
-当前轻量环境可运行：
+运行示例：
 
 ```bash
-pytest -o addopts=
-flake8
+python scripts/run_workflow.py
 ```
 
-没有安装 `rasterio` 时，真实 GeoTIFF 读写测试会跳过；安装完整 GIS 依赖后会继续执行。
+运行完成后查看：
+
+```text
+data/<uuid>/output/
+  metadata.json
+  preview.png
+  result.tif
+```
+
+## 输出结果
+
+无论用户请求 NDVI、SAVI、NDWI、NDMI、NDBI 还是 NBR，用户侧输出统一命名为：
+
+- `metadata.json`：面向用户和结果溯源的精简产品信息；
+- `preview.png`：渲染后的 PNG 预览图；
+- `result.tif`：最终指数 GeoTIFF。
+
+产品类型、指数名、公式、数据源、时间范围、空间信息、质量诊断等写入 `metadata.json`，不再通过文件名表达产品类型。
+
+## Direct Answer
+
+`direct_answer` route 用于：
+
+- 普通知识问题；
+- 系统能力问题，例如“你能做什么？”；
+- 当前不支持的产品请求。
+
+该 route 不会运行 raster tools，也不会创建完整 raster workflow。能力问答会明确当前 V1 支持 NDVI、SAVI、NDWI、NDMI、NDBI、NBR；不支持的产品会被诚实说明，并建议用户询问系统功能或改用已支持的指数产品。
+
+## V1 限制
+
+这些限制是 V1 边界，不是缺陷：
+
+- 当前真实 raster preparation 只接入 Sentinel-2；
+- Sentinel-2 单 tile 约为 100 km * 100 km，V1 最大可下载 scene 数量限制为 20，本地内存不足时可能达不到这个数；
+- 当前适合中小尺度行政区或城市区域，推荐覆盖面积小于 10 万平方千米；
+- 过大的 AOI 可能导致下载慢、处理慢或失败；
+- 靠海城市、包含领海、岛屿或复杂 MultiPolygon 的 AOI 可能出现覆盖率与视觉效果不稳定；
+- 当前日志主要输出在终端，尚未持久化为 `workflow_trace.json`；
+- 当前是本地命令行 / local workflow，没有 Web 前端；
+- 当前没有 FastAPI backend、Redis queue、worker、job lifecycle manager、用户系统；
+- 当前没有 GEE、多数据源自动选择、DEM、population、night lights、land cover 产品；
+- 当前不是生产级 GIS 平台，而是本地可运行的 V1 agent。
+
+## V2 方向
+
+V2 将聚焦服务化和部署：
+
+- FastAPI backend；
+- Redis queue；
+- worker；
+- frontend；
+- job status API；
+- file download API；
+- job lifecycle cleanup；
+- CPU server deployment。
+
+V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用于全球范围 scale-aware source 自动选择，以及 DEM、population、night lights、land cover 等更多专题产品。
 
 ## 文档
 
 详细设计见 `docs/`：
 
+- `docs/v1-summary.md`
 - `docs/architecture.md`
 - `docs/raster-toolchain.md`
 - `docs/design-decisions.md`
-- `docs/development-log.md`
+- `docs/demo-cases.md`
 - `docs/roadmap.md`

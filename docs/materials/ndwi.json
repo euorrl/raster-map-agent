@@ -1,0 +1,47 @@
+{
+  "area": {
+    "aoi_query": "New York, USA"
+  },
+  "product": {
+    "family": "raster",
+    "method": {
+      "formula": "(green - nir) / (green + nir)",
+      "name": "index_formula"
+    },
+    "name": "NDWI",
+    "type": "index"
+  },
+  "quality": {
+    "coverage_ratio": 0.9999999999999998,
+    "coverage_status": "covered",
+    "min_coverage_ratio": 0.9,
+    "raster_prepare_validation_status": "passed",
+    "selected_scene_count": 2
+  },
+  "source": {
+    "data_source": "sentinel2",
+    "provider": "earth_search"
+  },
+  "spatial": {
+    "bounds": {
+      "bottom": 4480940.0,
+      "left": 562800.0,
+      "right": 609750.0,
+      "top": 4530180.0
+    },
+    "crs": "EPSG:32618",
+    "height": 4924,
+    "resolution": {
+      "unit": "metre",
+      "x": 10.0,
+      "y": 10.0
+    },
+    "resolution_meters": 10.0,
+    "width": 4695
+  },
+  "time_range": {
+    "end_date": "2025-08-31",
+    "max_cloud_cover": 20.0,
+    "start_date": "2025-06-01"
+  }
+}

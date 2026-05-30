@@ -1,0 +1,47 @@
+{
+  "area": {
+    "aoi_query": "Chengdu, Sichuan, China"
+  },
+  "product": {
+    "family": "raster",
+    "method": {
+      "formula": "(nir - red) / (nir + red)",
+      "name": "index_formula"
+    },
+    "name": "NDVI",
+    "type": "index"
+  },
+  "quality": {
+    "coverage_ratio": 1.0,
+    "coverage_status": "covered",
+    "min_coverage_ratio": 0.9,
+    "raster_prepare_validation_status": "passed",
+    "selected_scene_count": 5
+  },
+  "source": {
+    "data_source": "sentinel2",
+    "provider": "earth_search"
+  },
+  "spatial": {
+    "bounds": {
+      "bottom": 3329120.0,
+      "left": 307590.0,
+      "right": 489900.0,
+      "top": 3478670.0
+    },
+    "crs": "EPSG:32648",
+    "height": 14955,
+    "resolution": {
+      "unit": "metre",
+      "x": 10.0,
+      "y": 10.0
+    },
+    "resolution_meters": 10.0,
+    "width": 18231
+  },
+  "time_range": {
+    "end_date": "2026-05-29",
+    "max_cloud_cover": 20.0,
+    "start_date": "2026-04-01"
+  }
+}

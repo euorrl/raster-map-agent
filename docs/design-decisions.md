@@ -1,291 +1,134 @@
 # 关键设计决策
 
-本文记录项目中的重要取舍，避免后续忘记为什么这样设计。
+本文记录当前 V1 中仍然有效的设计决策。V1 的目标是构建一个本地端到端可运行的受控型 raster workflow agent，而不是 production-ready GIS 平台。
 
-## 先工具链，后 Agent
+## 受控型 Workflow，而不是自由 Tool Calling
 
-项目最终目标是本地完整 Agent，但实现顺序不是先写复杂 Agent。
-
-当前策略：
-
-```text
-先让真实工具链可运行
-再让 planner 生成受约束 plan
-再加入 validator / adjuster 局部恢复能力
-再接入 workflow template、compiler 和 executor
-```
+LLM 只负责理解用户意图和生成结构化 `state.plan`。底层工具顺序、参数来源、validator 和 retry 逻辑由系统控制。
 
 原因：
 
-- 工具输入输出稳定后，Agent 节点更容易设计
-- 避免 LLM 层掩盖底层 GIS 工具不稳定的问题
-- 本地能跑出真实图后，项目价值更明确
+- 避免 LLM 直接拼接不稳定的 GIS 参数；
+- 保证 raster route 的执行顺序可测试、可复现；
+- 让 registry 成为产品能力的唯一稳定来源；
+- 让 validator / adjuster 可以围绕确定的 tool call id 工作。
 
-## 工具层与控制层分离
-
-`app/tools` 保存确定性的领域工具：
-
-```text
-workspace
-raster_prepare
-index_calculation
-render_preview
-metadata
-answer
-```
-
-工具应尽量：
-
-- 输入输出清晰
-- 可单独测试
-- 不直接读取 `AgentState`
-- 不承担 workflow 路由职责
-
-`app/agent` 保存控制组件：
+当前 compiler 为 raster route 生成固定工具链：
 
 ```text
-nodes
-planners
-validators
-adjusters
+workspace.create_workspace
+raster_prepare.prepare_raster_inputs
+index_calculation.calculate_raster_index
+render_preview.render_index_preview
+metadata.export_metadata
+answer.generate_final_answer
 ```
 
-`app/workflows` 保存编排规则：
+## Route Decision
+
+Planner 会在 `raster_product_generate` 和 `direct_answer` 之间选择。
+
+使用 `direct_answer` 的情况：
+
+- 普通知识问题；
+- 系统能力问题；
+- 当前不支持的产品请求；
+- 与当前 raster workflow 无关的问题。
+
+这样可以避免把 population、DEM、night lights、land cover 等未接入产品强行映射到 NDVI 或 NDWI。
+
+## Registry 是产品能力边界
+
+当前 V1 支持 6 个 Sentinel-2 指数：
+
+- NDVI
+- SAVI
+- NDWI
+- NDMI
+- NDBI
+- NBR
+
+Registry 中可以保留尚未接入真实 prepare 链路的数据源配置，例如 Landsat，但文档和产品能力说明必须区分：
+
+- registered configuration；
+- enabled real execution path。
+
+当前真实 `raster_prepare` 只执行 Sentinel-2。
+
+## Compiler / Executor 分离
+
+Compiler 只生成 `tool_calls`，不执行工具。Executor 按 `runtime.current_tool_index` 单步执行一个 tool call。
+
+这种分离带来几个好处：
+
+- 工具调用计划可以被测试和审计；
+- executor 可以在每个工具后交给 workflow routing；
+- validator / adjuster 可以只处理刚执行完成的工具；
+- retry 时只需要把 `current_tool_index` 拉回目标 tool call。
+
+## Validator / Adjuster 只处理 Tool Call，不改 Plan
+
+当前只有 `raster_prepare` 的 tool rule。validator 根据 diagnostics 判断：
+
+- `passed`：继续后续工具；
+- `retryable`：进入 adjuster；
+- `failed`：终止并交给 answer fallback。
+
+Adjuster 不直接修改 `state.plan`。它只更新目标 `tool_call.params`，写入 retry runtime 信息，并让 executor 重试该工具。
+
+这样可以保留用户原始意图，同时记录每次工程参数调整。
+
+## 统一输出命名
+
+最终用户-facing 输出统一命名：
 
 ```text
-workflow graph
-workflow templates
-tool rules
+metadata.json
+preview.png
+result.tif
 ```
 
-因此当前边界是：
-
-```text
-tool 负责做事
-planner 负责把自然语言转换成结构化计划
-validator 负责验收
-adjuster 负责有限参数修正
-tool_rules 负责声明 tool / validator / adjuster / retry 的关系
-workflow 负责路由和编排
-```
-
-`answer` 工具有 LLM 调用，但它仍是最终产物生成器，不是控制层 planner。
-
-## 为什么不让 LLM 完全自由控制 tool
-
-GIS 处理有明确依赖：
-
-```text
-没有 workspace 不能稳定保存文件
-没有 prepared raster 不能计算指数
-没有 index GeoTIFF 不能渲染 preview
-没有 metadata 很难生成可信最终回答
-```
-
-所以 V1 不追求完全自由 tool planning，而采用：
-
-```text
-LLM planner 负责用户意图和初始业务参数
-workflow template 负责工具骨架
-compiler 负责生成 tool_calls
-executor 负责执行 tool_calls
-validator / adjuster 负责局部恢复
-```
-
-这比纯 pipeline 更有反馈能力，也比完全自由 agent 更稳定。
-
-## Planner 只生成 plan
-
-全局 planner 位于：
-
-```text
-app/agent/planners/zhipu_planner.py
-```
-
-Planner 只写：
-
-```text
-state.plan
-state.runtime["planners"]["global"]
-```
-
-`state.plan` 只保存 LLM 真正需要决策的核心业务字段：
-
-```text
-route
-answer_mode
-aoi_query
-index_name
-start_date
-end_date
-max_cloud_cover
-```
-
-Planner 不生成 `tool_calls`。`tool_calls` 由系统 compiler 根据
-`plan + registry + workflow template` 生成。
-
-Planner 也不写这些内部字段：
-
-```text
-data_source
-workspace_dir
-band_roles
-index_formula
-scene_limit
-max_selected_scenes
-validator
-adjuster
-retry
-```
-
-这些由 registry、tool schema、workflow template 和 tool rules 控制。
-
-## 为什么删除 `resolved`
-
-曾经考虑过在 `AgentState` 中加入 `resolved`，用于保存 registry 解析后的配置。
-
-最终删除该字段，原因是：
-
-- `tool_calls` 未来会保存带参数的工具调用计划
-- registry 解析结果最终应进入 `tool_calls.params`
-- 额外的 `resolved` 容易和 `tool_calls` 职责重叠
-- state 顶层字段应尽量稳定和少
-
-当前过渡方案：
-
-```python
-state.runtime["registry"]["raster_product"]
-```
-
-用于保存当前节点执行需要的 registry 解析结果。
-
-当 compiler 实现后，这部分配置会被编译进 `tool_calls.params`。
-
-metadata tool 不依赖 state 中的 metadata 分区。它接收 state snapshot，
-从 `plan`、`runtime` 和 `tool_results` 中抽取精简产品信息，JSON 顶层直接保存
-产品信息对象，只保留用户
-理解产品所需的信息，例如产品类型、产品名称、AOI、日期、云量、数据来源、提供方、分辨率、
-CRS 和质量诊断。`product` 使用通用结构，指数公式只作为
-`product.method.formula` 的可选信息出现，`landtype` 等非指数产品不会携带
-`index_formula`。空间信息优先从真实产品 GeoTIFF 读取；如果最终产品栅格不存在，
-才尝试读取 `raster_prepare.band_paths` 中的裁剪波段。metadata 不再使用数据源默认值
-伪造 CRS 或分辨率。`source` 也保持通用，只输出 `data_source` 和 `provider`，
-不把 `satellite`、`collection` 等数据源特有字段固定进用户侧 metadata。用户侧
-metadata 也不输出 GeoJSON、GeoTIFF、PNG 等文件路径。
-
-## Registry 负责知识，Tools 负责执行
-
-指数、公式、波段角色和数据源配置属于稳定知识，不应散落在工具 schema 或 LLM 输出中。
-
-当前约定：
-
-```text
-planner -> 输出 route + answer_mode + aoi_query + index_name + date range + max_cloud_cover
-registry -> 展开 data_source / required_bands / band_roles / formula / render_config / STAC asset mapping
-raster_prepare -> 准备裁剪后的 band GeoTIFF
-index_calculation -> 根据 band_roles + formula 计算指数
-render_preview -> 根据 index_name 和 render_config 渲染预览 PNG
-```
-
-这样 LLM 不需要直接输出公式或猜波段。
-
-## 为什么引入 route 和 answer_mode
-
-并不是所有用户输入都应该进入栅格工作流。例如：
-
-```text
-什么是遥感？
-你支持哪些地图？
-生成成都人口密度图
-```
-
-如果当前 registry 不支持用户请求的产品，强行映射到 NDVI/NDWI 会产生错误结果。
-
-因此 planner 输出：
-
-```text
-route = raster_product_generate | direct_answer
-answer_mode = metadata_summary | direct_answer
-```
-
-- `raster_product_generate`：用户请求可由当前注册表和工具链完成
-- `direct_answer`：普通问答、无关问题、系统能力询问，或当前未支持产品
-
-这样 final answer 节点可以选择：
-
-- 基于 metadata 总结真实 workflow 结果
-- 直接回答用户问题或说明当前不支持
-
-## 为什么不把 ReAct 放进 raster_prepare
-
-`raster_prepare` 本质是数据准备工具：
-
-```text
-AOI + 日期 + 指数 + 数据源 -> clipped band GeoTIFF
-```
-
-如果把 LLM ReAct 直接塞进 `raster_prepare`，它会从确定性工具变成一个小 agent，导致：
-
-- 工具层和控制层边界模糊
-- 离线复用和单元测试变困难
-- 后续其他工具难以复用统一验证策略
-
-因此局部 ReAct 放在 agent/workflow 控制层。
-
-## V1 数据源固定为 Sentinel-2
-
-Registry 已经保留 Landsat 的基础配置，但当前 `raster_prepare` 只真正执行 Sentinel-2。
+不再使用指数名作为文件名。产品类型、指数名、公式、数据源、时间范围和空间信息写入 `metadata.json`。
 
 原因：
 
-- Sentinel-2 L2A 已能满足 V1 的 NDVI/NDWI 本地流程验证
-- 多 provider 会引入不同 STAC endpoint、asset 命名和下载规则
-- Landsat 不会从根本上解决超大 AOI 下载压力
+- 后续部署调用可以稳定读取固定文件；
+- 不需要根据用户请求推断输出文件名；
+- 输出路径可以被前端和 API 简化处理。
 
-因此 V1 adjuster 只允许有限调整：
+## Metadata 不是 AgentState Dump
 
-- 日期范围，优先向前扩展 `start_date`
-- 云量阈值，尽量少改，只能递增且不超过 30
+`metadata.json` 是面向用户和结果溯源的精简产品信息，不是完整 `AgentState` dump。
 
-而不是自动切换 provider。
+它由 `metadata.export_metadata` 从 plan、runtime registry、tool_results、raster_prepare diagnostics、validator 结果和最终 GeoTIFF profile 中抽取关键字段。
 
-## AOI 数据源从 geoBoundaries 切到 Nominatim
+这样可以避免把内部 tool calls、prompt、临时路径和运行时控制字段暴露为用户结果。
 
-最初考虑 geoBoundaries，因为它有清晰行政区 API 和 GeoJSON。
+## Workspace 清理策略
 
-后来发现：
-
-- 国内省市县效果较差
-- ADM 层级对用户和 LLM 都不直观
-- `gbAuthoritative` 覆盖范围有限
-
-因此改为 Nominatim / OpenStreetMap。
-
-新的输入协议更简单：
-
-```text
-query + workspace_dir
-```
-
-LLM 负责把地点整理成更适合查询的自然语言地址，例如：
-
-```text
-Chengdu, Sichuan, China
-Hangzhou, Zhejiang, China
-```
-
-## 输出目录统一放入 workspace
-
-每次任务先创建：
-
-```text
-data/<uuid>/
-```
-
-最终输出统一放在：
+V1 使用本地 workspace。处理过程中会出现 AOI、下载影像、mosaic raster、clipped raster 等中间数据，但最终用户侧只保留：
 
 ```text
 data/<uuid>/output/
+  metadata.json
+  preview.png
+  result.tif
 ```
 
-不再使用项目根目录下的外部 `outputs/` 作为主要输出位置。
+`raster_prepare` 删除 AOI、download 和 mosaic 中间目录；`index_calculation` 消费 clipped bands 后删除 `clipped_raster/`。
+
+V2 可以引入 job lifecycle manager，例如结果保留 30 分钟后自动删除整个 workspace。
+
+## V1 边界
+
+V1 不声明支持：
+
+- production-ready 部署；
+- 全球任意区域稳定运行；
+- 所有遥感产品；
+- GEE；
+- 多数据源自动选择；
+- DEM、population、night lights、land cover 产品；
+- Web 前端和用户系统。
+
+这些属于 V2/V3 或 future research 方向。

@@ -1,237 +1,208 @@
 # 项目架构
 
-本文记录当前项目的代码结构、状态设计和模块边界。
+本文记录当前 V1 的代码结构、workflow 架构和主要节点职责。以当前实现为准，V1 是一个受控型 workflow agent，而不是让 LLM 自由调用底层工具的 agent。
 
-## 总体分层
+## 总体定位
+
+Raster Map Agent 当前是一个本地端到端可运行的 Sentinel-2 raster map generation agent。
+
+核心原则：
+
+```text
+planner 负责理解用户想做什么
+registry 负责系统支持什么产品
+compiler 负责把 plan 编译成受控 tool calls
+executor 负责单步执行 tool calls
+validator / adjuster 负责工具后的质量检查和有限重试
+tools 负责确定性的遥感数据处理
+answer 负责最终面向用户的回答
+```
+
+## 代码结构
 
 ```text
 app/
   agent/
+    nodes.py
+    planners/
+    validators/
+    adjusters/
   registry/
   schemas/
   tools/
+    workspace/
+    raster_prepare/
+    index_calculation/
+    render_preview/
+    metadata/
+    answer/
   workflows/
+    templates.py
+    compiler.py
+    executor.py
+    tool_rules.py
+    workflow.py
 ```
 
-当前核心原则：
+## AgentState
 
-```text
-registry 负责系统支持什么
-planner 负责理解用户想做什么
-workflow/template/rules 负责系统怎么执行
-tools 负责确定性领域计算
-state 负责节点间共享上下文
-```
+`AgentState` 是 workflow 中共享的状态对象，主要字段包括：
 
-## `app/schemas`
+- `user_query`：用户原始请求；
+- `plan`：planner 生成的结构化任务计划；
+- `tool_calls`：compiler 生成的受控工具调用列表；
+- `workspace`：当前任务 workspace 信息；
+- `tool_results`：各工具执行结果；
+- `runtime`：planner、registry、compiler、executor、validator、adjuster 等运行时信息；
+- `final_answer`：最终回答；
+- `status`：当前 workflow 状态；
+- `errors` / `warnings`：追加式错误和警告。
 
-保存跨模块共享的数据结构。当前最重要的是 `AgentState`。
+`plan`、`workspace`、`tool_results`、`runtime` 使用递归合并语义，节点只需要返回局部更新。
 
-`AgentState` 顶层字段：
+## 当前 Workflow
 
-```text
-user_query
-plan
-tool_calls
-workspace
-tool_results
-runtime
-final_answer
-status
-errors
-warnings
-```
-
-字段含义：
-
-- `user_query`：用户原始输入
-- `plan`：planner 生成的结构化用户任务意图
-- `tool_calls`：compiler 生成的带参数工具调用计划
-- `workspace`：任务工作区信息，例如 `run_id` 和 `workspace_dir`
-- `tool_results`：各工具的原始返回结果，按工具名分区保存
-- `runtime`：workflow 运行时控制信息
-- `final_answer`：最终返回给用户的文本答案
-- `status`：当前 workflow 状态
-- `errors`：追加式错误列表
-- `warnings`：追加式警告列表
-
-`plan`、`workspace`、`tool_results`、`runtime` 使用递归 dict reducer。节点只需要返回局部更新，LangGraph 或 fallback runner 会把它合并进已有 state。当前 state 不包含 `metadata` 分区，避免把完整中间状态混入最终产品说明。
-
-当前没有单独的 `resolved` 字段。registry 解析结果在过渡期写入：
-
-```python
-state.runtime["registry"]["raster_product"]
-```
-
-当前 compiler 会把 registry 解析结果编译进
-`state.tool_calls[*]["params"]`。`runtime["registry"]` 仍作为过渡期真实节点执行
-的上下文保留。
-
-## `app/registry`
-
-保存稳定知识和产品能力配置。
-
-当前主要文件：
-
-```text
-app/registry/raster_products.py
-```
-
-当前 registry 包含：
-
-- Sentinel-2 数据源配置
-- Landsat 注册信息
-- NDVI / NDWI 指数配置
-- band roles
-- index formula
-- render config
-- STAC provider / collection / asset mapping
-
-V1 的真实 `raster_prepare` 只执行 Sentinel-2；Landsat 当前是 registry-only 能力。
-
-Registry 不保存 workflow template、tool order、validator、adjuster 或 retry 规则。
-
-## `app/tools`
-
-真实领域工具层。工具应保持确定性、可单独测试、可离线调用，并且不直接读写 `AgentState`。
-
-当前工具：
-
-```text
-app/tools/workspace/
-app/tools/raster_prepare/
-app/tools/index_calculation/
-app/tools/render_preview/
-app/tools/metadata/
-app/tools/answer/
-```
-
-职责：
-
-- `workspace`：创建 `data/<uuid>/` 任务工作区
-- `raster_prepare`：AOI 解析、scene plan、下载、mosaic、clip，输出裁剪后的 band GeoTIFF
-- `index_calculation`：根据 band roles 和 formula 计算指数 GeoTIFF
-- `render_preview`：根据 registry 渲染配置生成 PNG 预览图
-- `metadata`：从 state snapshot 抽取用户关心的产品信息，导出为 `output/metadata.json`
-- `answer`：通过 LLM 生成最终回答，支持 `metadata_summary` 和 `direct_answer`
-
-部分 GIS 工具依赖 `rasterio`。包入口采用懒加载，避免仅导入 workflow 或 schema 时强制要求完整 GIS 依赖。
-
-## `app/agent`
-
-Agent 控制组件层。它不承载稳定产品知识，也不直接执行 GIS 计算。
-
-当前结构：
-
-```text
-app/agent/
-  nodes.py
-  planners/
-    zhipu_planner.py
-  validators/
-    raster_prepare_validator.py
-  adjusters/
-    raster_prepare_adjuster.py
-```
-
-职责：
-
-- `nodes.py`：当前 workflow 节点函数
-- `planners/`：把自然语言需求转换为结构化 `state.plan`
-- `validators/`：检查工具结果是否可继续、可重试或失败
-- `adjusters/`：根据 validator diagnostics 生成有限参数调整
-
-Planner 不输出工具调用顺序，不生成 `tool_calls`，不决定 validator、adjuster 或 retry。
-
-## `app/workflows`
-
-保存 workflow 编排层。
-
-当前结构：
-
-```text
-app/workflows/
-  compiler.py
-  executor.py
-  workflow.py
-  templates.py
-  tool_rules.py
-```
-
-职责：
-
-- `templates.py`：route 到工具序列骨架的注册表
-- `compiler.py`：根据 `plan + registry + workflow template` 生成 `tool_calls`
-- `executor.py`：解析 `$state...` 引用，按顺序执行 `tool_calls` 并写回 state
-- `tool_rules.py`：工具结果后处理规则，包含 validator、adjuster、最大 retry 次数
-- `workflow.py`：当前 V1 workflow graph；缺少 LangGraph 时提供线性 fallback runner
-
-当前支持两个 route：
-
-```text
-raster_product_generate
-direct_answer
-```
-
-`raster_product_generate` 模板声明的目标工具序列：
-
-```text
-workspace.create_workspace
-raster_prepare.prepare_raster_inputs
-index_calculation.calculate_raster_index
-render_preview.render_index_preview
-metadata.export_metadata
-answer.generate_final_answer
-```
-
-当前 `workflow.py` 仍以节点方式显式执行真实工具，但已经在 planner/registry 后
-编译 `state.tool_calls`。executor 已可独立执行 `tool_calls`，后续会把主 workflow
-逐步收敛到 executor 驱动。
-
-当前节点流程：
+当前准确的高层流程是：
 
 ```text
 planner
--> registry
+-> route decision
+-> registry if raster task
 -> compiler
--> workspace
--> raster_prepare
--> raster_prepare_validator
--> product_generation
--> answer
+-> execute_tool loop
+-> optional validate_tool / adjust_tool loop
+-> final answer
 ```
 
-其中 `product_generation` 当前封装 index calculation、preview rendering 和 metadata export。
+`workflow.py` 提供 LangGraph graph；缺少 LangGraph 时使用 `_LinearWorkflow` fallback runner，模拟同样的执行顺序。
 
-## 数据目录
+## 节点职责
 
-本地运行数据保存在：
+### planner_node
+
+`planner_node` 调用 planner，解析用户自然语言请求，生成 `state.plan`，并决定 route。
+
+当前 route：
+
+- `raster_product_generate`：已支持的 raster map generation 任务；
+- `direct_answer`：普通问题、系统能力问题、当前不支持的产品请求。
+
+planner 只生成结构化 plan，不生成 `tool_calls`，也不决定底层工具顺序、band roles、index formula、validator 或 retry 参数。planner runtime 信息写入 `runtime["planners"]["global"]`。
+
+### registry_node
+
+`registry_node` 仅 raster route 使用。它根据 `state.plan["index_name"]` 和数据源解析 raster product 配置，并写入：
+
+```python
+runtime["registry"]["raster_product"]
+```
+
+当前真实 raster preparation 只接入 Sentinel-2。Registry 中存在 Landsat 基础配置，但 V1 不把 Landsat 写成真实可执行链路。
+
+### compiler_node
+
+`compiler_node` 将 `state.plan`、registry 配置和 workflow template 编译成标准 `tool_calls`，并初始化 `runtime.current_tool_index`。
+
+这样做的目的：
+
+- 不让 LLM 自由决定底层工具参数；
+- 将工具顺序固定在 workflow template 中；
+- 让 executor 通过 `$state...` 引用在运行时解析依赖结果。
+
+### tool_executor_node
+
+`tool_executor_node` 每次只执行一个 tool call。它读取：
+
+```python
+runtime["current_tool_index"]
+```
+
+然后执行 `tool_calls[current_tool_index]`，将结果写入 `workspace`、`tool_results` 或 `final_answer`，并把 `current_tool_index` 推进到下一个工具。
+
+executor 还会记录：
+
+- `runtime.last_tool_index`
+- `runtime.last_tool_call_id`
+- `runtime.last_tool_name`
+
+这些字段用于后续 validator / adjuster routing。
+
+### tool_validator_node
+
+如果刚执行完成的 tool call 存在 tool rule，workflow 会进入 validator。当前只有 `raster_prepare` 的 tool rule。
+
+`raster_prepare` validator 重点检查：
+
+- 是否存在 raster prepare 结果；
+- registry 或 prepare 结果中的 required bands；
+- diagnostics 是否存在；
+- coverage 是否达到要求；
+- 所需 band path 是否存在。
+
+validator 只判断 `passed`、`retryable` 或 `failed`，不修改 tool call 参数，也不执行工具。
+
+### tool_adjuster_node
+
+当 validator 判断结果可重试时，workflow 进入 adjuster。
+
+当前 `raster_prepare` adjuster 会：
+
+- 读取上一次 `raster_prepare` 的 tool call params；
+- 根据 validator 的 suggested actions 调整允许的字段；
+- 可调整 `start_date`、`end_date`、`max_cloud_cover`；
+- 不修改 `state.plan`；
+- 更新对应 `tool_calls[last_tool_index].params`；
+- 写入 `runtime.adjustments` 和 `runtime.retry_counts`；
+- 将 `runtime.current_tool_index` 拉回对应工具，使 executor 重试。
+
+最大 retry 次数为 5。
+
+### answer.generate_final_answer
+
+`answer.generate_final_answer` 当前通常作为最后一个 tool call 执行。
+
+- raster route 基于 `metadata.export_metadata` 产出的 product info 生成最终回答；
+- direct answer route 直接回答普通问题、系统能力问题或不支持的产品请求；
+- 对不支持产品，应诚实说明当前暂不支持，而不是强行映射到已有指数。
+
+### answer_node
+
+`answer_node` 现在主要是安全兜底和终止节点：
+
+- 如果 `final_answer` 已存在，直接返回；
+- 如果 workflow 在 answer tool 前失败，生成失败回答；
+- 如果没有 final answer 且 workflow 未失败，生成兜底回答。
+
+## Tool Call 顺序
+
+`raster_product_generate` route 的 compiler 输出：
 
 ```text
-data/<uuid>/
+1. workspace.create_workspace
+2. raster_prepare.prepare_raster_inputs
+3. index_calculation.calculate_raster_index
+4. render_preview.render_index_preview
+5. metadata.export_metadata
+6. answer.generate_final_answer
 ```
 
-典型结构：
+`direct_answer` route 的 compiler 输出：
 
 ```text
-data/<uuid>/
-  aoi/
-  clipped_raster/
-  output/
+1. answer.generate_final_answer
 ```
 
-中间目录 `raster/` 和 `mosaic_raster/` 在 prepare 成功后会被清理。
+## 输出目录
 
-最终输出放在：
+最终用户-facing 输出统一为：
 
 ```text
-data/<uuid>/output/
+data/
+  <uuid>/
+    output/
+      metadata.json
+      preview.png
+      result.tif
 ```
 
-例如：
-
-```text
-data/<uuid>/output/result.tif
-data/<uuid>/output/preview.png
-data/<uuid>/output/metadata.json
-```
+中间目录如 `aoi/`、`raster/`、`mosaic_raster/`、`clipped_raster/` 只在处理过程中临时存在。`raster_prepare` 会删除 AOI、下载影像和 mosaic 中间目录，`index_calculation` 消费 clipped bands 后会删除 `clipped_raster/`。

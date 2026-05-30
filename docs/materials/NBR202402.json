@@ -1,0 +1,47 @@
+{
+  "area": {
+    "aoi_query": "Sydney, New South Wales, Australia"
+  },
+  "product": {
+    "family": "raster",
+    "method": {
+      "formula": "(nir - swir2) / (nir + swir2)",
+      "name": "index_formula"
+    },
+    "name": "NBR",
+    "type": "index"
+  },
+  "quality": {
+    "coverage_ratio": 1.0,
+    "coverage_status": "covered",
+    "min_coverage_ratio": 0.9,
+    "raster_prepare_validation_status": "passed",
+    "selected_scene_count": 3
+  },
+  "source": {
+    "data_source": "sentinel2",
+    "provider": "earth_search"
+  },
+  "spatial": {
+    "bounds": {
+      "bottom": 6216480.0,
+      "left": 246160.0,
+      "right": 346390.0,
+      "top": 6306540.0
+    },
+    "crs": "EPSG:32756",
+    "height": 9006,
+    "resolution": {
+      "unit": "metre",
+      "x": 10.0,
+      "y": 10.0
+    },
+    "resolution_meters": 10.0,
+    "width": 10023
+  },
+  "time_range": {
+    "end_date": "2024-02-29",
+    "max_cloud_cover": 20.0,
+    "start_date": "2024-02-01"
+  }
+}
