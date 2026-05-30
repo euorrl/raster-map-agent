@@ -1,6 +1,6 @@
 # 关键设计决策
 
-本文记录当前 V1 中仍然有效的设计决策。V1 的目标是构建一个本地端到端可运行的受控型 raster workflow agent，而不是 production-ready GIS 平台。
+本文记录当前 V1 中仍然有效的设计决策。
 
 ## 受控型 Workflow，而不是自由 Tool Calling
 
@@ -8,6 +8,7 @@ LLM 只负责理解用户意图和生成结构化 `state.plan`。底层工具顺
 
 原因：
 
+- GIS 任务往往具有严格的数据接入要求；
 - 避免 LLM 直接拼接不稳定的 GIS 参数；
 - 保证 raster route 的执行顺序可测试、可复现；
 - 让 registry 成为产品能力的唯一稳定来源；
@@ -24,19 +25,6 @@ metadata.export_metadata
 answer.generate_final_answer
 ```
 
-## Route Decision
-
-Planner 会在 `raster_product_generate` 和 `direct_answer` 之间选择。
-
-使用 `direct_answer` 的情况：
-
-- 普通知识问题；
-- 系统能力问题；
-- 当前不支持的产品请求；
-- 与当前 raster workflow 无关的问题。
-
-这样可以避免把 population、DEM、night lights、land cover 等未接入产品强行映射到 NDVI 或 NDWI。
-
 ## Registry 是产品能力边界
 
 当前 V1 支持 6 个 Sentinel-2 指数：
@@ -48,21 +36,23 @@ Planner 会在 `raster_product_generate` 和 `direct_answer` 之间选择。
 - NDBI
 - NBR
 
-Registry 中可以保留尚未接入真实 prepare 链路的数据源配置，例如 Landsat，但文档和产品能力说明必须区分：
+使用产品 Registry 可以很方便地拓展不同的卫星与指数配置。当前真实 `raster_prepare` 只执行 Sentinel-2。
 
-- registered configuration；
-- enabled real execution path。
+## Route templates
 
-当前真实 `raster_prepare` 只执行 Sentinel-2。
+将不同任务中工具的组合以及关系设计为注册表形式，这样 planner 只需要选择高度抽象并且区分度明显的workflow, 提高 plnner 的准确性。此外，templates 分摊了项目的结构复杂度，可以让 nodes 变为极简，从而大大减轻 graph 的复杂度。
 
-## Compiler / Executor 分离
+## tool rules
+包含需要检验的函数的 validator 和 adjuster，用于在分布 tool executor 执行时检测单步 tool call是否需要检测，具备对于不同的 tool calls 动态组合 validator/adjuster 的能力。同时还包含`根据tool call id 判断是否存在 tool rules`以及`判断 adjuster 的 retry 次数是否已经达到阈值`的函数。
+
+## Compiler / Executor
 
 Compiler 只生成 `tool_calls`，不执行工具。Executor 按 `runtime.current_tool_index` 单步执行一个 tool call。
 
-这种分离带来几个好处：
+这种设计带来几个好处：
 
 - 工具调用计划可以被测试和审计；
-- executor 可以在每个工具后交给 workflow routing；
+- 分步 executor 可以在每个工具执行后根据 tool rules 判断是否需要检测；
 - validator / adjuster 可以只处理刚执行完成的工具；
 - retry 时只需要把 `current_tool_index` 拉回目标 tool call。
 
@@ -119,16 +109,3 @@ data/<uuid>/output/
 
 V2 可以引入 job lifecycle manager，例如结果保留 30 分钟后自动删除整个 workspace。
 
-## V1 边界
-
-V1 不声明支持：
-
-- production-ready 部署；
-- 全球任意区域稳定运行；
-- 所有遥感产品；
-- GEE；
-- 多数据源自动选择；
-- DEM、population、night lights、land cover 产品；
-- Web 前端和用户系统。
-
-这些属于 V2/V3 或 future research 方向。

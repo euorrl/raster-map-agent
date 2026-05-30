@@ -144,7 +144,15 @@ answer.generate_final_answer
 
 当前 validator 主要检查 coverage、required bands、diagnostics 和 band paths。
 
-## 阶段 12：V1 收尾
+## 阶段 12：Nodes 设计与 Langgraph nodes graph 构建
+
+完成：
+
+- 通用极简型 Nodes 设计
+- 通用型 Langgraph nodes graph 构建
+- 不用 Langgraph 的 nodes graph 构建
+
+## 阶段 13：V1 收尾
 
 当前 V1 已完成：
 
@@ -153,6 +161,8 @@ answer.generate_final_answer
 - direct answer route；
 - six Sentinel-2 index products；
 - product registry；
+- tool rules;
+- route templates
 - compiler；
 - executor；
 - single-step tool execution；

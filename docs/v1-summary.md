@@ -93,16 +93,16 @@ Direct answer route 用于：
 
 ## V1 Limitations
 
-这些限制是 V1 边界，不是缺陷：
+这些限制是 V1 边界：
 
 - 当前真实 raster preparation 只接入 Sentinel-2；
 - Sentinel-2 单 tile 约为 100 km * 100 km；
 - 当前最大可下载 scene 数量限制为 20，本地运行内存不足时可能达不到这个数；
 - 当前适合中小尺度行政区或城市区域，推荐覆盖面积小于 10 万平方千米；
 - 过大的 AOI 可能导致下载慢、处理慢或失败；
-- 靠海城市、包含领海、岛屿或复杂 MultiPolygon 的行政边界 AOI 可能存在卫星数据量不足，导致覆盖率与视觉效果不如内陆地区稳定；
+- 靠海地区的行政边界AOI可能包含领海，在某些较偏远的领海可能存在卫星数据量不足的情况，导致覆盖率与视觉效果不如内陆地区稳定；
 - 当前日志主要输出在终端，尚未持久化为 `workflow_trace.json`；
-- 当前是本地命令行 / local workflow，没有 Web 前端；
+- 当前是本地运行，没有 Web 前端；
 - 当前没有 FastAPI backend、Redis queue、worker、job lifecycle manager、用户系统；
 - 当前没有 GEE、多数据源自动选择、DEM、population、night lights、land cover 产品；
 - 当前不是生产级 GIS 平台，而是本地可运行的 V1 agent。
@@ -120,4 +120,4 @@ V2 将聚焦服务化和部署：
 - job lifecycle cleanup；
 - CPU server deployment。
 
-V3 / future research 可探索 GEE-based raster_prepare 替代工具包，但它不是 V2 必做项。
+V3 将探索 GEE-based raster_prepare 替代工具包。

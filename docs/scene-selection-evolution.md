@@ -108,9 +108,7 @@ scene footprint union / AOI bbox polygon
 现在改为：
 
 ```text
-scene footprint union ∩ AOI GeoJSON geometry
-/
-AOI GeoJSON geometry
+scene footprint union ∩ AOI GeoJSON geometry / AOI GeoJSON geometry
 ```
 
 也就是说：
@@ -138,7 +136,7 @@ AOI GeoJSON geometry
 核心思想：
 
 ```text
-每一轮选择最能补当前 AOI 缺口的 scene；
+每一轮选择时间窗口中与 bbox 相交的最能补当前 AOI 缺口的 scene；
 如果多个 scene 的新增贡献接近，再选择云量最低的 scene。
 ```
 
@@ -187,7 +185,7 @@ STAC features
 -> 过滤没有 geometry 的 scene
 ```
 
-`RasterSceneCandidateStore` 的作用是让多次查询可以累积候选 scene。后续局部 ReAct 扩大日期或放宽云量时，可以继续把新查询结果合并到同一个 store，再重新生成 plan。
+`RasterSceneCandidateStore` 的作用是让多次查询可以累积候选 scene。后续局部 ReAct 扩大日期或放宽云量时，可以继续把新查询结果合并到同一个 store，再重新生成 scene plan。不过观察发现生成 scene plan 的耗时很短，因此这个动态存储能力并没有在 agent 中使用。如果启用虽然消耗时间略微有降低，但是会为 agent 带来不小的不确定性，这是因为 adjuster 的 LLM 不一定会生成连续的日期范围，可能导致跳过一些日期而丢失卫星数据，这可能需要详细调整 prompt 才能优化。
 
 ### 已覆盖区域与未覆盖区域
 
@@ -301,7 +299,7 @@ limit = 100
 max_selected_scenes = 20
 contribution_tolerance = 0.95
 min_scene_overlap_ratio = 0
-min_coverage_ratio = 0.7
+min_coverage_ratio = 0.9
 ```
 
 含义：
@@ -429,51 +427,41 @@ C 虽然云量最低，但贡献差太多，不会被选。
 
 - 扩大日期范围
 - 放宽云量阈值
-- 增加查询候选数量
+- 增加查询候选数量（考虑用户等待时间与运行内存消耗未启用）
 
-如果这些都无法解决，最终 answer 应该向用户说明遥感影像可用覆盖率不足。
+如果这些都无法解决，最终 answer 应该向用户说明可用遥感影像覆盖率不足。
 
-## 与 mosaic 的边界
+## 功能边界
 
 `scene_plan` 只处理 metadata 层面的 scene 选择：
 
 ```text
-选哪些 scene
-下载哪些 band asset
 coverage 是否足够
+制定 scene 下载计划
+制定 band asset 下载计划
 ```
 
-它不处理像素合并，也不做 median。
-
-后续 `mosaic` 模块负责：
-
-```text
-同一 band 的多个 GeoTIFF
--> 空间合并
--> 重叠区 median / mean / first 等策略
--> 输出一张 band mosaic GeoTIFF
-```
+它不下载数据，也不处理像素合并。
 
 因此：
 
 ```text
-scene_plan 负责减少冗余下载
+scene_plan 负责制定下载计划，减少冗余下载
+download 负责真实下载
 mosaic 负责像素层合并
 clip 负责裁剪到真实 AOI
 ```
 
-这个边界可以避免 scene_plan 过早承担 raster 像素处理逻辑。
+这个边界可以避免 scene_plan 过早承担 raster 下载与处理逻辑。
 
 ## Coverage 阈值从“完整覆盖”改为“最低可接受覆盖”
 
-在真实测试中发现，即使日期范围和云量条件已经比较宽泛，部分 AOI 仍然可能无法达到
-100% footprint 覆盖。原因通常不是代码错误，而是当前候选 Sentinel-2 scene 的真实有效
-footprint 本身存在缺口，或者 AOI 边缘区域没有合适影像。
+在真实测试中发现，即使日期范围和云量条件已经比较宽泛，部分 AOI 仍然可能无法达到 100% footprint 覆盖。原因通常不是代码错误，而是当前候选 Sentinel-2 scene 的真实有效 footprint 本身存在缺口，或者 AOI 边缘区域没有合适影像。此外，计算覆盖率的外部函数本身算法存在一些数值误差，因此往往无法严格达到100%。
 
-因此 V1 不再把 100% coverage 作为硬性通过条件，而是引入：
+因此不再把 100% coverage 作为硬性通过条件，而是引入：
 
 ```python
-min_coverage_ratio = 0.7
+min_coverage_ratio = 0.9
 ```
 
 新的判断逻辑是：
@@ -484,17 +472,16 @@ coverage_ratio < min_coverage_ratio  -> not_covered，可进入 ReAct 调参
 ```
 
 注意：这个阈值只影响 diagnostics 的通过/失败判断，不会让 scene 选择在刚达到
-70% 时立刻停止。选择算法仍然会尽量补足 AOI coverage，直到接近完整覆盖、候选
+90% 时立刻停止。选择算法仍然会尽量补足 AOI coverage，直到接近完整覆盖、候选
 scene 没有新增贡献，或达到 `max_selected_scenes`。
 
 这样做的原因：
 
-- 对作品集 V1 来说，跑通完整本地流程比追求工业级完整覆盖更重要
 - 一些真实地区即使缺少边缘覆盖，仍然足以展示 NDVI 计算、mosaic、clip、render 流程
 - coverage_ratio 会被完整保留，后续 answer 可以向用户说明“当前影像覆盖率约为 xx%”
 - 如果低于阈值，diagnostics 仍然会建议扩大日期或放宽云量
 
-这不是放弃质量控制，而是把 coverage 从绝对门槛改成可解释的质量指标。
+这并没有放弃质量控制，而是把 coverage 从绝对门槛改成可解释的质量指标，在不失去可用性的同时大大提高成功率。
 
 ## 与 metadata / answer 的关系
 

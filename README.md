@@ -1,6 +1,6 @@
 # Raster Map Agent
 
-Raster Map Agent 是一个自然语言驱动的 **local V1 Raster Workflow Agent**。用户用自然语言描述想生成的遥感专题图，系统会规划任务、使用真实 Sentinel-2 数据运行受控 workflow，并输出 GeoTIFF、预览图和精简 metadata。
+Raster Map Agent 是一个自然语言驱动的 **栅格地图生成Agent**。用户用自然语言描述想生成的遥感专题图，系统会规划任务、使用真实 Sentinel-2 数据运行受控 workflow，并输出 GeoTIFF、预览图和精简 metadata。
 
 当前项目不是 production-ready GIS 平台，也不是通用遥感产品引擎；它是一个本地端到端可运行的 V1 agent，核心目标是验证自然语言规划、受控工具链执行和遥感产品生成流程。
 
@@ -19,7 +19,7 @@ V1 已经完成本地端到端 raster map generation workflow：
 
 ## 支持产品
 
-当前真实执行链路基于 Sentinel-2。Registry 中保留了 Landsat 配置，但 V1 的 `raster_prepare` 只接入 Sentinel-2。
+当前真实执行链路的遥感数据来源于 Sentinel-2。Registry 中保留了 Landsat 配置，但 V1 的 `raster_prepare` 只接入 Sentinel-2。
 
 | 产品 | 含义 | 主要用途 | V1 支持 | 数据源 |
 | --- | --- | --- | --- | --- |
@@ -34,17 +34,15 @@ DEM、population、night lights、land cover、GEE、多数据源自动选择等
 
 ## 高层架构
 
-当前 workflow 是受控型 tool-call workflow：
+当前 workflow 是一个受控型 LangGraph tool-call workflow, 由一组明确的 node 组成：
 
-```text
-planner
--> route decision
--> registry if raster task
--> compiler
--> execute_tool loop
--> optional validate_tool / adjust_tool loop
--> final answer
-```
+- planner_node：根据用户输入生成受控 plan，并决定任务选择 `raster_product_generate` route 还是 `direct_answer` route；
+- registry_node：仅在 `raster_product_generate` 任务中执行，用于解析指数、数据源、波段、公式和渲染配置；
+- compiler_node：将 plan 和 registry 上下文编译成线性的 tool_calls；
+- tool_executor_node：逐步执行 tool_call；
+- tool_validator_node：当刚刚执行完成的 tool_call 存在 tool rule 时，对该 tool 的结果进行验证；
+- tool_adjuster_node：当验证结果为 retryable 时，调整该 tool_call 的参数，并将 workflow 拉回 execute_tool 重新执行；
+- answer_node：作为最终终止节点，返回 final answer，或在失败情况下生成 fallback response。
 
 `raster_product_generate` route 的受控工具链：
 
@@ -63,7 +61,13 @@ answer.generate_final_answer
 answer.generate_final_answer
 ```
 
-项目结构：
+## LangGraph 完整工作流架构
+<p align="center">
+  <img src="docs/materials/diagram.png" alt="LangGraph 工作流架构" width="600">
+</p>
+
+
+## 项目结构：
 
 ```text
 app/
@@ -89,6 +93,7 @@ pip install -r requirements-dev.txt
 
 配置 `.env`：
 
+本项目 LLM 提供方选择智谱: https://open.bigmodel.cn/
 ```env
 ZHIPUAI_API_KEY=
 ZHIPUAI_MODEL=glm-4.7-flash
@@ -165,9 +170,14 @@ V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用
 
 详细设计见 `docs/`：
 
-- `docs/v1-summary.md`
-- `docs/architecture.md`
-- `docs/raster-toolchain.md`
-- `docs/design-decisions.md`
-- `docs/demo-cases.md`
-- `docs/roadmap.md`
+- [导航](docs/index.md)
+- [V1 总结](docs/v1-summary.md)
+- [项目架构](docs/architecture.md)
+- [开发日志](docs/development-log.md)
+- [栅格工具链](docs/raster-toolchain.md)
+- [关键设计决策](docs/design-decisions.md)
+- [Demo Cases](docs/demo-cases.md)
+- [Scene 选择算法迭代](docs/scene-selection-evolution.md)
+- [路线图](docs/roadmap.md)
+
+或者访问：https://raster-map-agent.readthedocs.io/en/latest/
