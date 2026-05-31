@@ -1,5 +1,8 @@
 python-dotenv==1.2.2
+fastapi==0.124.2
 langgraph==1.2.1
 pydantic==2.13.4
 rasterio==1.4.4
+redis==7.1.0
 shapely==2.1.2
+uvicorn==0.38.0
