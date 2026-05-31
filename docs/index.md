@@ -61,6 +61,7 @@ data/<uuid>/output/
 
 - [V1 总结](v1-summary.md)
 - [项目架构](architecture.md)
+- [Backend 服务](backend.md)
 - [开发日志](development-log.md)
 - [栅格工具链](raster-toolchain.md)
 - [关键设计决策](design-decisions.md)

@@ -180,19 +180,39 @@ answer.generate_final_answer
 
 - V1 已经完成；
 - 文档对齐；
-- 准备进入 V2。
+- 最小 backend 服务层已经完成；
+- 准备进入前端和部署完善阶段。
 
-## 下一阶段
+## 阶段 14：最小 Backend 服务层
 
-V2 将聚焦服务化和部署：
+当前 backend 已完成：
 
 - FastAPI backend；
 - Redis queue；
 - worker；
+- Docker Compose 启动；
+- 默认 2 个 worker；
+- `POST /jobs` 创建任务；
+- `GET /jobs/{job_id}` 查询状态；
+- `GET /jobs/{job_id}/metadata` 下载 metadata；
+- `GET /jobs/{job_id}/preview` 下载预览图；
+- `GET /jobs/{job_id}/result` 下载 GeoTIFF；
+- `GET /health` 健康检查；
+- job 创建时间记录；
+- 30 分钟 job / workspace lifecycle cleanup；
+- 结果文件完整但 final answer 超时时的可交付兜底。
+
+当前 backend 仍然保持最小实现，不包含用户系统、鉴权、任务取消、细粒度进度百分比、持久化 workflow trace、生产日志和监控。
+
+## 下一阶段
+
+下一阶段将聚焦前端和部署完善：
+
 - frontend；
-- job status API；
-- file download API；
-- job lifecycle cleanup；
+- 更完整的 job status / progress API；
+- 生产日志、监控和错误追踪；
+- 用户系统和鉴权；
+- 任务取消；
 - CPU server deployment。
 
 V3 / future research 可探索 GEE-based raster_prepare 替代工具包，用于全球范围 scale-aware source 自动选择和更多专题产品。

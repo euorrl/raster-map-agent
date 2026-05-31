@@ -116,6 +116,42 @@ data/<uuid>/output/
   result.tif
 ```
 
+## Backend / Docker 运行
+
+当前项目已经包含一个最小可用的 FastAPI backend、Redis 队列和 worker。后端会把一次用户请求包装成一个 job，并通过 job id 查询状态、下载结果文件。
+
+使用 Docker Compose 启动：
+
+```bash
+docker compose up --build
+```
+
+启动后包含：
+
+- `api`：FastAPI 服务，默认监听 `http://127.0.0.1:8000`；
+- `redis`：保存 job 状态并作为任务队列；
+- `worker`：默认 2 个 worker，从 Redis 队列消费 job 并执行 workflow；
+- `data/`：API 和 worker 共享的本地结果目录。
+
+可访问接口文档：
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+主要接口：
+
+```text
+POST /jobs
+GET /jobs/{job_id}
+GET /jobs/{job_id}/metadata
+GET /jobs/{job_id}/preview
+GET /jobs/{job_id}/result
+GET /health
+```
+
+一次用户请求会创建一个 job。Raster job 成功后，后端通过 `job_id` 返回对应 workspace 中的 `metadata.json`、`preview.png` 和 `result.tif`。当前 job 默认保留 30 分钟，之后 worker 会删除 Redis job 记录和对应 workspace。
+
 ## 输出结果
 
 无论用户请求 NDVI、SAVI、NDWI、NDMI、NDBI 还是 NBR，用户侧输出统一命名为：
@@ -146,22 +182,21 @@ data/<uuid>/output/
 - 过大的 AOI 可能导致下载慢、处理慢或失败；
 - 靠海城市、包含领海、岛屿或复杂 MultiPolygon 的 AOI 可能出现覆盖率与视觉效果不稳定；
 - 当前日志主要输出在终端，尚未持久化为 `workflow_trace.json`；
-- 当前是本地命令行 / local workflow，没有 Web 前端；
-- 当前没有 FastAPI backend、Redis queue、worker、job lifecycle manager、用户系统；
+- V1 workflow 本身是本地命令行 / local workflow，没有 Web 前端；
+- V1 本身没有 FastAPI backend、Redis queue、worker、job lifecycle manager、用户系统；
 - 当前没有 GEE、多数据源自动选择、DEM、population、night lights、land cover 产品；
 - 当前不是生产级 GIS 平台，而是本地可运行的 V1 agent。
 
 ## V2 方向
 
-V2 将聚焦服务化和部署：
+V2 将继续聚焦服务化、前端和部署完善。当前已经完成了最小 FastAPI / Redis / worker 后端，后续重点包括：
 
-- FastAPI backend；
-- Redis queue；
-- worker；
 - frontend；
-- job status API；
-- file download API；
-- job lifecycle cleanup；
+- 更完整的 job status / progress API；
+- 文件下载 API 的部署化访问策略；
+- job lifecycle cleanup 的生产化策略；
+- 生产日志、监控和错误追踪；
+- 用户系统和鉴权；
 - CPU server deployment。
 
 V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用于全球范围 scale-aware source 自动选择，以及 DEM、population、night lights、land cover 等更多专题产品。
@@ -174,6 +209,7 @@ V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用
 - [V1 总结](docs/v1-summary.md)
 - [项目架构](docs/architecture.md)
 - [开发日志](docs/development-log.md)
+- [Backend 服务](docs/backend.md)
 - [栅格工具链](docs/raster-toolchain.md)
 - [关键设计决策](docs/design-decisions.md)
 - [Demo Cases](docs/demo-cases.md)
