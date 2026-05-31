@@ -8,6 +8,8 @@ export interface JobCreateResponse {
 export interface JobResponse {
   job_id: string;
   status: JobStatus;
+  stage: string;
+  message: string;
   final_answer: string;
   error: string;
 }

@@ -10,6 +10,7 @@ JOB_KEY_PREFIX = "job:"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_QUEUE_NAME = "raster_jobs"
 DEFAULT_JOB_TTL_SECONDS = 1800
+DEFAULT_JOB_RUNNING_TIMEOUT_SECONDS = 180
 
 
 def get_redis_url() -> str:
@@ -33,6 +34,22 @@ def get_job_ttl_seconds() -> int:
     return ttl_seconds if ttl_seconds > 0 else DEFAULT_JOB_TTL_SECONDS
 
 
+def get_job_running_timeout_seconds() -> int:
+    load_dotenv()
+    raw_value = os.getenv(
+        "JOB_RUNNING_TIMEOUT_SECONDS",
+        str(DEFAULT_JOB_RUNNING_TIMEOUT_SECONDS),
+    )
+    try:
+        timeout_seconds = int(raw_value)
+    except ValueError:
+        return DEFAULT_JOB_RUNNING_TIMEOUT_SECONDS
+
+    if timeout_seconds > 0:
+        return timeout_seconds
+    return DEFAULT_JOB_RUNNING_TIMEOUT_SECONDS
+
+
 def get_redis() -> Redis:
     return Redis.from_url(get_redis_url(), decode_responses=True)
 
@@ -42,10 +59,14 @@ def job_key(job_id: str) -> str:
 
 
 def create_job(redis: Redis, job_id: str, query: str) -> None:
+    now = int(time.time())
     job = {
         "status": "queued",
         "query": query,
-        "created_at": int(time.time()),
+        "created_at": now,
+        "updated_at": now,
+        "stage": "queued",
+        "message": "任务已进入队列，等待 worker 处理。",
         "workspace_dir": "",
         "final_answer": "",
         "error": "",

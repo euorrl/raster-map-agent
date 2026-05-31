@@ -54,10 +54,14 @@ def test_submit_job_writes_minimal_job_and_enqueue(monkeypatch):
     assert redis.queues["raster_jobs"] == [job_id]
     job = json.loads(redis.values[job_key(job_id)])
     created_at = job.pop("created_at")
+    updated_at = job.pop("updated_at")
     assert isinstance(created_at, int)
+    assert isinstance(updated_at, int)
     assert job == {
         "status": "queued",
         "query": "Generate Chengdu NDVI",
+        "stage": "queued",
+        "message": "任务已进入队列，等待 worker 处理。",
         "workspace_dir": "",
         "final_answer": "",
         "error": "",
@@ -76,6 +80,8 @@ def test_read_job_returns_public_minimal_fields(monkeypatch):
     assert response.json() == {
         "job_id": "job-1",
         "status": "succeeded",
+        "stage": "queued",
+        "message": "任务已进入队列，等待 worker 处理。",
         "final_answer": "done",
         "error": "",
     }
@@ -132,10 +138,14 @@ def test_worker_process_job_success(monkeypatch, tmp_path):
     job = get_job(redis, "job-1")
     assert job is not None
     created_at = job.pop("created_at")
+    updated_at = job.pop("updated_at")
     assert isinstance(created_at, int)
+    assert isinstance(updated_at, int)
     assert job == {
         "status": "succeeded",
         "query": "query",
+        "stage": "completed",
+        "message": "任务已完成，结果文件可下载。",
         "workspace_dir": str(tmp_path),
         "final_answer": "done",
         "error": "",
@@ -155,6 +165,7 @@ def test_worker_process_job_failure(monkeypatch):
 
     job = get_job(redis, "job-1")
     assert job["status"] == "failed"
+    assert job["stage"] == "failed"
     assert job["error"] == "boom"
 
 
@@ -193,6 +204,7 @@ def test_worker_treats_complete_artifacts_as_succeeded(monkeypatch, tmp_path):
 
     job = get_job(redis, "job-1")
     assert job["status"] == "succeeded"
+    assert job["stage"] == "completed"
     assert job["workspace_dir"] == str(tmp_path)
     assert job["error"] == ""
     assert "metadata.json" in job["final_answer"]
@@ -226,3 +238,29 @@ def test_cleanup_expired_jobs_deletes_job_and_workspace(tmp_path):
 
     assert get_job(redis, "job-1") is None
     assert not workspace_dir.exists()
+
+
+def test_mark_stale_running_jobs_marks_failed():
+    redis = FakeRedis()
+    create_job(redis, "job-1", "query")
+    update_job(
+        redis,
+        "job-1",
+        status="running",
+        updated_at=100,
+        stage="workflow",
+        message="running",
+    )
+
+    worker_module.mark_stale_running_jobs(
+        redis,
+        running_timeout_seconds=300,
+        now=401,
+    )
+
+    job = get_job(redis, "job-1")
+    assert job is not None
+    assert job["status"] == "failed"
+    assert job["stage"] == "stale_running"
+    assert job["updated_at"] == 401
+    assert "heartbeat timed out" in job["error"]

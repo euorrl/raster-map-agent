@@ -22,6 +22,8 @@ class JobCreateResponse(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     status: str
+    stage: str = ""
+    message: str = ""
     final_answer: str = ""
     error: str = ""
 
@@ -39,6 +41,8 @@ def read_job(job_id: str) -> JobResponse:
     return JobResponse(
         job_id=job_id,
         status=str(job.get("status", "")),
+        stage=str(job.get("stage", "")),
+        message=str(job.get("message", "")),
         final_answer=str(job.get("final_answer", "")),
         error=str(job.get("error", "")),
     )

@@ -1,5 +1,6 @@
 import json
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from app.workflows.workflow import run_workflow
 from backend.redis_client import (
     delete_job,
     get_job,
+    get_job_running_timeout_seconds,
     get_job_ttl_seconds,
     get_redis,
     iter_job_ids,
@@ -21,6 +23,7 @@ from backend.redis_client import (
 logger = get_logger(__name__)
 
 OUTPUT_FILENAMES = ("metadata.json", "preview.png", "result.tif")
+HEARTBEAT_INTERVAL_SECONDS = 30
 
 
 def process_job(redis: Redis, job_id: str) -> None:
@@ -38,17 +41,41 @@ def process_job(redis: Redis, job_id: str) -> None:
         redis,
         job_id,
         status="running",
+        stage="workflow",
+        message="任务正在运行，worker 会持续更新心跳。",
+        updated_at=int(time.time()),
         error="",
         final_answer="",
         workspace_dir="",
     )
 
+    stop_heartbeat = threading.Event()
+    heartbeat_thread = threading.Thread(
+        target=_heartbeat_job,
+        args=(redis, job_id, stop_heartbeat),
+        daemon=True,
+    )
+    heartbeat_thread.start()
+
     try:
         state = run_workflow(query)
     except Exception as error:
         logger.exception("Workflow failed job_id=%s", job_id)
-        update_job(redis, job_id, status="failed", error=str(error))
+        stop_heartbeat.set()
+        heartbeat_thread.join(timeout=1)
+        update_job(
+            redis,
+            job_id,
+            status="failed",
+            stage="failed",
+            message="任务执行失败。",
+            updated_at=int(time.time()),
+            error=str(error),
+        )
         return
+    finally:
+        stop_heartbeat.set()
+        heartbeat_thread.join(timeout=1)
 
     workspace_dir = str(state.workspace.get("workspace_dir", ""))
     final_answer = state.final_answer or ""
@@ -57,6 +84,9 @@ def process_job(redis: Redis, job_id: str) -> None:
             redis,
             job_id,
             status="succeeded",
+            stage="completed",
+            message="任务已完成，结果文件可下载。",
+            updated_at=int(time.time()),
             workspace_dir=workspace_dir,
             final_answer=final_answer,
             error="",
@@ -76,6 +106,9 @@ def process_job(redis: Redis, job_id: str) -> None:
             redis,
             job_id,
             status="succeeded",
+            stage="completed",
+            message="结果文件已生成，final answer 使用兜底回答。",
+            updated_at=int(time.time()),
             workspace_dir=workspace_dir,
             final_answer=_build_artifact_fallback_answer(workspace_dir, error_text),
             error="",
@@ -86,6 +119,9 @@ def process_job(redis: Redis, job_id: str) -> None:
         redis,
         job_id,
         status="failed",
+        stage="failed",
+        message="任务执行失败。",
+        updated_at=int(time.time()),
         workspace_dir=workspace_dir,
         final_answer=final_answer,
         error=error_text,
@@ -96,9 +132,14 @@ def run_worker() -> None:
     configure_logging("INFO")
     redis = get_redis()
     ttl_seconds = get_job_ttl_seconds()
+    running_timeout_seconds = get_job_running_timeout_seconds()
     logger.info("Worker started")
     while True:
         try:
+            mark_stale_running_jobs(
+                redis,
+                running_timeout_seconds=running_timeout_seconds,
+            )
             cleanup_expired_jobs(redis, ttl_seconds=ttl_seconds)
             job_id = pop_job_id(redis)
             if job_id is None:
@@ -106,10 +147,53 @@ def run_worker() -> None:
 
             logger.info("Processing job job_id=%s", job_id)
             process_job(redis, job_id)
+            mark_stale_running_jobs(
+                redis,
+                running_timeout_seconds=running_timeout_seconds,
+            )
             cleanup_expired_jobs(redis, ttl_seconds=ttl_seconds)
         except RedisError as error:
             logger.warning("Redis unavailable; retrying in 5 seconds: %s", error)
             time.sleep(5)
+
+
+def mark_stale_running_jobs(
+    redis: Redis,
+    running_timeout_seconds: int | None = None,
+    now: int | None = None,
+) -> None:
+    running_timeout_seconds = (
+        running_timeout_seconds or get_job_running_timeout_seconds()
+    )
+    now = now or int(time.time())
+
+    for job_id in list(iter_job_ids(redis)):
+        job = get_job(redis, job_id)
+        if job is None or job.get("status") != "running":
+            continue
+
+        updated_at = _parse_timestamp(job.get("updated_at"))
+        if updated_at is None:
+            updated_at = _parse_timestamp(job.get("created_at"))
+
+        if updated_at is None or now - updated_at < running_timeout_seconds:
+            continue
+
+        error_text = (
+            "Worker heartbeat timed out. The worker may have stopped during "
+            "workflow execution, or the task may be too large for current "
+            "container resources."
+        )
+        update_job(
+            redis,
+            job_id,
+            status="failed",
+            stage="stale_running",
+            message="任务长时间没有 worker 心跳，已自动标记为失败。",
+            updated_at=now,
+            error=error_text,
+        )
+        logger.warning("Marked stale running job as failed job_id=%s", job_id)
 
 
 def cleanup_expired_jobs(
@@ -125,7 +209,7 @@ def cleanup_expired_jobs(
         if job is None:
             continue
 
-        created_at = _parse_created_at(job.get("created_at"))
+        created_at = _parse_timestamp(job.get("created_at"))
         if created_at is None or now - created_at < ttl_seconds:
             continue
 
@@ -234,7 +318,25 @@ def _nested_str(data: dict, *keys: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _parse_created_at(value) -> int | None:
+def _heartbeat_job(redis: Redis, job_id: str, stop_event: threading.Event) -> None:
+    while not stop_event.wait(HEARTBEAT_INTERVAL_SECONDS):
+        try:
+            update_job(
+                redis,
+                job_id,
+                updated_at=int(time.time()),
+                stage="workflow",
+                message="任务仍在运行，worker 心跳正常。",
+            )
+        except (KeyError, RedisError) as error:
+            logger.warning(
+                "Failed to update job heartbeat job_id=%s: %s",
+                job_id,
+                error,
+            )
+
+
+def _parse_timestamp(value) -> int | None:
     try:
         return int(value)
     except (TypeError, ValueError):

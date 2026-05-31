@@ -141,6 +141,7 @@ const jobId = ref(localStorage.getItem("raster-map-agent:last-job-id") || "");
 const status = ref<JobStatus>(jobId.value ? "queued" : "idle");
 const finalAnswer = ref("");
 const errorText = ref("");
+const backendMessage = ref("");
 const startedAt = ref<number | null>(jobId.value ? Date.now() : null);
 const elapsedSeconds = ref(0);
 const submitError = ref("");
@@ -171,9 +172,10 @@ const elapsedText = computed(() => {
 const statusMessage = computed(() => {
   if (submitError.value) return submitError.value;
   if (status.value === "queued") {
-    return "请求已进入队列，正在等待空闲 worker。";
+    return backendMessage.value || "请求已进入队列，正在等待空闲 worker。";
   }
   if (status.value === "running") {
+    if (backendMessage.value) return backendMessage.value;
     if (elapsedSeconds.value < 30) return "系统正在解析请求并查询可用 Sentinel-2 影像。";
     if (elapsedSeconds.value < 120) return "系统正在下载影像、裁剪 AOI 并准备指数计算。";
     if (elapsedSeconds.value < 240) return "系统正在处理栅格数据和渲染预览图，请继续等待。";
@@ -224,6 +226,7 @@ async function pollJob() {
   try {
     const job = await getJob(jobId.value);
     status.value = job.status;
+    backendMessage.value = job.message || "";
     finalAnswer.value = job.final_answer || "";
     errorText.value = job.error || "";
 
@@ -250,6 +253,7 @@ function resetCurrentJob() {
   jobId.value = "";
   finalAnswer.value = "";
   errorText.value = "";
+  backendMessage.value = "";
   submitError.value = "";
   elapsedSeconds.value = 0;
 }
