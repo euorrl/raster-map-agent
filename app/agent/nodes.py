@@ -249,8 +249,5 @@ def _build_workflow_failure_answer(state: AgentState) -> str:
     if warning_text:
         details.append(f"相关警告：{warning_text}")
 
-    details.append(
-        "可以尝试一个正常运行示例：生成成都 NDVI 图，时间范围 "
-        "2024-06-01 到 2024-08-31，最大云量 20%。"
-    )
+    details.append("可以尝试一个正常运行示例：能帮我生成一张巴黎 2026 年的水域分布图吗")
     return "\n".join(details)
