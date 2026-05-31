@@ -5,7 +5,7 @@
         <div>
           <h1>Raster Map Agent</h1>
         </div>
-        <a class="health-link" href="/api/health" target="_blank" rel="noreferrer">
+        <a class="health-link" :href="healthUrl" target="_blank" rel="noreferrer">
           API Health
         </a>
       </header>
@@ -130,6 +130,7 @@ import {
 import {
   createJob,
   getJob,
+  getHealthUrl,
   getMetadataUrl,
   getPreviewUrl,
   getResultUrl,
@@ -154,6 +155,7 @@ const canSubmit = computed(() => query.value.trim().length > 0 && !isBusy.value)
 const previewUrl = computed(() => (jobId.value ? getPreviewUrl(jobId.value) : ""));
 const metadataUrl = computed(() => (jobId.value ? getMetadataUrl(jobId.value) : ""));
 const resultUrl = computed(() => (jobId.value ? getResultUrl(jobId.value) : ""));
+const healthUrl = computed(() => getHealthUrl());
 
 const statusTitle = computed(() => {
   if (status.value === "queued") return "任务已提交";

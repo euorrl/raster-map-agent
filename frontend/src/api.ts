@@ -27,6 +27,10 @@ export async function getJob(jobId: string): Promise<JobResponse> {
   return readJson<JobResponse>(response);
 }
 
+export function getHealthUrl(): string {
+  return `${API_BASE}/health`;
+}
+
 export function getMetadataUrl(jobId: string): string {
   return `${API_BASE}/jobs/${jobId}/metadata`;
 }
