@@ -1,6 +1,8 @@
 # 路线图
 
-本文记录当前阶段和后续方向。V1 已完成，最小后端服务层也已经完成，当前重点是进入前端、部署和生产化整理。
+本文记录当前阶段和后续方向。
+- V1 已完成本地端到端功能闭环；
+- V2 已完成本地服务化、前端展示和基于内网穿透的外部访问闭环。
 
 ## V1 已完成
 
@@ -11,8 +13,8 @@ V1 当前已经完成：
 - direct answer route；
 - six Sentinel-2 index products；
 - product registry；
-- tool rules;
-- route templates
+- tool rules；
+- route templates；
 - compiler；
 - executor；
 - single-step tool execution；
@@ -44,40 +46,69 @@ data/<uuid>/output/
   result.tif
 ```
 
-## 当前阶段
+## V2 已完成
 
-当前阶段是：
+V2 聚焦服务化、前端和部署展示，不改变 V1 的 raster workflow、工具链、算法或架构。
 
-- V1 已经完成；
-- 最小 FastAPI / Redis / worker backend 已经完成；
-- Docker Compose 可以启动 API、Redis 和 2 个 worker；
-- backend 已支持 job 创建、状态查询、结果下载和 30 分钟 job 清理；
-- 准备进入前端和部署完善阶段。
-
-## V2 方向
-
-V2 聚焦服务化和部署，不把 GEE 产品引擎作为必做项。
-
-已完成：
+当前 V2 已完成：
 
 - FastAPI backend；
 - Redis queue；
-- worker；
-- job status API；
-- file download API；
-- job lifecycle cleanup；
-- Docker Compose local deployment。
+- 默认 2 个 worker；
+- Docker Compose local backend deployment；
+- `POST /jobs` 创建任务；
+- `GET /jobs/{job_id}` 查询状态；
+- `GET /jobs/{job_id}/metadata` 下载 metadata；
+- `GET /jobs/{job_id}/preview` 下载预览图；
+- `GET /jobs/{job_id}/result` 下载 GeoTIFF；
+- `GET /health` 健康检查；
+- job `stage` / `message` 状态字段；
+- worker heartbeat；
+- running job 心跳失联兜底；
+- 30 分钟 job / workspace lifecycle cleanup；
+- Vue / Vite / TypeScript frontend；
+- 前端任务提交、轮询状态、展示回答、展示预览图和下载结果；
+- Vercel 前端部署；
+- 本地电脑后端通过内网穿透提供公网访问；
+- Vercel 前端通过 `VITE_API_BASE_URL` 调用公网后端。
 
-后续方向：
+当前 V2 部署形态：
 
-- frontend；
+```text
+Vercel frontend
+  -> backend public URL from tunnel
+    -> local Docker backend
+      -> FastAPI / Redis / workers
+```
+
+## V2 边界
+
+当前 V2 仍然不是生产级 GIS 平台。已知边界：
+
+- 本地电脑关机后，后端不可用；
+- 临时内网穿透地址可能变化；
+- Vercel 修改环境变量后必须重新部署；
+- 当前没有用户系统和鉴权；
+- 当前没有任务取消；
+- 当前没有硬性任务运行超时终止；
+- 当前没有细粒度百分比进度；
+- 当前没有持久化 workflow trace；
+- 当前没有生产级日志、监控和告警；
+- 当前没有多机 worker 调度。
+
+## 后续方向
+
+后续服务化方向可以包括：
+
+- 固定域名和 named tunnel；
+- 后端部署到稳定 CPU server；
 - 更完整的 job status / progress API；
-- 生产日志、监控和错误追踪；
-- 用户系统和鉴权；
 - 任务取消；
-- deployment on CPU server。
-
-V2 的目标是把当前 local workflow 进一步整理成可展示、可部署、可运维的服务。当前 backend 已经完成了可调用、可排队、可查看状态、可下载结果的最小闭环。
+- 持久化日志与 workflow trace；
+- 监控、告警和错误追踪；
+- 用户系统和鉴权；
+- 多机 worker 调度；
+- 文件保留策略和下载权限控制。
 
 ## V3 / Future Research
 

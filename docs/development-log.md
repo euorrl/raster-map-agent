@@ -179,9 +179,7 @@ answer.generate_final_answer
 当前阶段：
 
 - V1 已经完成；
-- 文档对齐；
-- 最小 backend 服务层已经完成；
-- 准备进入前端和部署完善阶段。
+- 文档已对齐。
 
 ## 阶段 14：最小 Backend 服务层
 
@@ -204,15 +202,34 @@ answer.generate_final_answer
 
 当前 backend 仍然保持最小实现，不包含用户系统、鉴权、任务取消、细粒度进度百分比、持久化 workflow trace、生产日志和监控。
 
-## 下一阶段
+## 阶段 15：V2 前端与本地部署展示
 
-下一阶段将聚焦前端和部署完善：
+当前 V2 已完成前端和部署展示闭环：
 
-- frontend；
-- 更完整的 job status / progress API；
-- 生产日志、监控和错误追踪；
-- 用户系统和鉴权；
-- 任务取消；
-- CPU server deployment。
+- Vue / Vite / TypeScript frontend；
+- 自然语言请求输入；
+- `POST /jobs` 创建任务；
+- `GET /jobs/{job_id}` 轮询任务状态；
+- 展示 queued / running / succeeded / failed 状态；
+- 展示后端返回的 `message`、`final_answer` 和 `error`；
+- 展示 `preview.png`；
+- 下载 `metadata.json`、`preview.png` 和 `result.tif`；
+- `API Health` 使用配置化后端地址；
+- Vercel 前端部署；
+- 本地 Docker backend 通过内网穿透提供公网访问；
+- 后端 CORS 允许 Vercel 前端访问；
+- Vercel 通过 `VITE_API_BASE_URL` 配置公网后端地址。
+- V2 前端和本地部署展示闭环已经完成。
+
+当前部署形态是：
+
+```text
+Vercel 前端
+  -> 内网穿透公网地址
+    -> 本地电脑 Docker backend
+      -> FastAPI / Redis / workers
+```
+
+该阶段保持 V1 workflow 不变，只在外层增加服务化、前端和部署入口。
 
 V3 / future research 可探索 GEE-based raster_prepare 替代工具包，用于全球范围 scale-aware source 自动选择和更多专题产品。
