@@ -206,7 +206,7 @@ def _call_zhipuai_chat(messages: list[dict[str, str]]) -> str:
         },
         method="POST",
     )
-    with urlopen(request, timeout=60) as response:
+    with urlopen(request, timeout=120) as response:
         data = json.loads(response.read().decode("utf-8"))
 
     try:

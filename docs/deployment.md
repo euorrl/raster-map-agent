@@ -39,6 +39,20 @@ http://127.0.0.1:8000/health
 
 为了让 Vercel 前端访问本地后端，需要把本地 `8000` 暴露成公网地址。当前使用内网穿透方式，例如 Cloudflare Tunnel：
 
+首次使用前需要先安装 `cloudflared`。Windows 可以使用：
+
+```powershell
+winget install Cloudflare.cloudflared
+```
+
+安装完成后重新打开终端；如果仍然提示找不到 `cloudflared`，重启 VS Code 后再检查命令是否可用：
+
+```powershell
+cloudflared --version
+```
+
+确认本地后端已经启动后，再启动临时 tunnel：
+
 ```bash
 cloudflared tunnel --url http://127.0.0.1:8000
 ```
@@ -62,6 +76,20 @@ https://xxxx.trycloudflare.com/health
 ```
 
 临时 tunnel 的地址可能在重启后变化。地址变化后，需要同步更新 Vercel 的 `VITE_API_BASE_URL` 并重新部署前端。
+
+更新 Vercel 环境变量后，重新部署前端：
+
+```bash
+cd frontend
+vercel --prod
+```
+
+如果后端配置也发生变化，重启本地后端：
+
+```bash
+docker compose down
+docker compose up --build
+```
 
 长期使用建议配置固定域名和 named tunnel，例如：
 
@@ -113,47 +141,107 @@ docker compose up --build
 
 ## 部署检查清单
 
-本地后端：
+### 1. 本地后端健康检查
+
+确认本地 Docker 后端已经启动，并且 API 可以返回健康状态：
 
 ```text
 http://127.0.0.1:8000/health
 ```
 
-公网后端：
+预期返回：
+
+```json
+{"status":"ok"}
+```
+
+### 2. 公网后端健康检查
+
+确认内网穿透地址仍然有效，并且公网可以访问本地后端：
 
 ```text
 https://<backend-public-url>/health
 ```
 
-Vercel 环境变量：
+预期返回：
+
+```json
+{"status":"ok"}
+```
+
+如果该地址不可访问，优先检查 tunnel 是否断开、地址是否变化，以及本地 `8000` 端口是否仍在运行。
+
+### 3. Vercel 环境变量
+
+确认 Vercel 中的前端环境变量指向当前可用的公网后端地址：
 
 ```text
 VITE_API_BASE_URL=https://<backend-public-url>
 ```
 
-Docker 状态：
+如果内网穿透地址变化，需要更新 `VITE_API_BASE_URL` 并重新部署前端。
+
+### 4. Docker 容器状态
+
+确认 `api`、`redis` 和两个 `worker` 都在运行：
 
 ```bash
 docker compose ps
 ```
 
-worker 负载：
+如果只想看 worker：
+
+```bash
+docker compose ps worker
+```
+
+### 5. worker 动态负载
+
+查看 worker 的 CPU、内存和网络 I/O。持续观察时使用：
+
+```bash
+docker stats raster-map-agent-worker-1 raster-map-agent-worker-2
+```
+
+只看一次快照时使用：
 
 ```bash
 docker stats --no-stream raster-map-agent-worker-1 raster-map-agent-worker-2
 ```
 
-worker 日志：
+### 6. worker 日志
+
+查看 worker 是否正在消费 job、执行 workflow、写入结果或报错：
 
 ```bash
 docker compose logs -f worker
 ```
 
-Redis 队列：
+### 7. Redis 队列
+
+查看等待 worker 消费的任务数量：
 
 ```bash
 docker compose exec -T redis redis-cli LLEN raster_jobs
 ```
+
+如果队列长度长期不下降，通常说明 worker 没有正常消费任务，需要继续检查 worker 容器状态和日志。
+
+### 8. 前端页面检查
+
+本地开发前端：
+
+```text
+http://127.0.0.1:5173
+```
+
+线上 Vercel 前端：
+
+```text
+https://raster-map-agent.vercel.app
+```
+
+打开页面后点击 `API Health`，确认返回 `{"status":"ok"}`。然后先测试 direct answer，再测试小范围 raster job。
 
 ## 已知边界
 
