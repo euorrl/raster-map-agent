@@ -2,20 +2,20 @@
 
 Raster Map Agent 是一个自然语言驱动的 **栅格地图生成Agent**。用户用自然语言描述想生成的遥感专题图，系统会规划任务、使用真实 Sentinel-2 数据运行受控 workflow，并输出 GeoTIFF、预览图和精简 metadata。
 
-当前项目不是 production-ready GIS 平台，也不是通用遥感产品引擎；它是一个本地端到端可运行的 V1 agent，核心目标是验证自然语言规划、受控工具链执行和遥感产品生成流程。
+快速访问：https://raster-map-agent.vercel.app/
 
-## 当前 V1 状态
+项目详细文档：https://raster-map-agent.readthedocs.io/en/latest/
 
-V1 已经完成本地端到端 raster map generation workflow：
+> 注意：没有租长期服务器（抱歉🙃），服务不一定在线，如果无法访问或需要体验，欢迎联系Email-`a1913397362@163.com`
 
-- planner 解析用户请求并决定 route；
-- 制图任务进入 `raster_product_generate`；
-- 普通知识问题、系统能力问题或当前不支持的产品请求进入 `direct_answer`；
-- raster route 使用真实 Sentinel-2 STAC 查询、影像下载、AOI 裁剪、指数计算、预览图渲染、metadata 导出和 final answer 生成；
-- workflow 通过 compiler 生成受控 `tool_calls`，executor 单步执行；
-- `raster_prepare` 具备 validator / adjuster retry loop；
-- 失败时返回结构化错误信息或失败回答；
-- 非制图任务不会强行运行 raster workflow。
+
+## 当前状态
+
+已经
+- V1 完成本地端到端 raster map generation workflow：
+
+- V2 完成了从本地 workflow 到可访问服务的闭环：FastAPI + Redis + worker 后端、Vue 前端、结果下载接口，以及通过 Vercel + 内网穿透进行外部访问。
+
 
 ## 支持产品
 
@@ -116,6 +116,52 @@ data/<uuid>/output/
   result.tif
 ```
 
+## 本地 Backend / Frontend 运行
+
+当前项目已经包含一个最小可用的 FastAPI backend、Redis 队列、 worker 和 frontend。后端会把一次用户请求包装成一个 job，并通过 job id 查询状态、下载结果文件。默认本地前端：`http://127.0.0.1:8000`。
+
+> 注意：运行前请先准备好 Docker Desktop、Node.js / npm，并确保 `.env` 已正确配置。
+
+使用 Docker Compose 启动后端：
+
+```bash
+docker compose up --build
+```
+
+启动前端：
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+启动后包含：
+
+- `默认监听`: http://127.0.0.1:8000；
+- `api`：FastAPI 服务；
+- `redis`：保存 job 状态并作为任务队列；
+- `worker`：默认 2 个 worker，从 Redis 队列消费 job 并执行 workflow；
+
+
+可访问接口文档：
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+主要接口：
+
+```text
+POST /jobs
+GET /jobs/{job_id}
+GET /jobs/{job_id}/metadata
+GET /jobs/{job_id}/preview
+GET /jobs/{job_id}/result
+GET /health
+```
+
+一次用户请求会创建一个 job。Raster job 成功后，后端通过 `job_id` 返回对应 workspace 中的 `metadata.json`、`preview.png` 和 `result.tif`。当前 job 默认保留 30 分钟，之后 worker 会删除 Redis job 记录和对应 workspace。
+
 ## 输出结果
 
 无论用户请求 NDVI、SAVI、NDWI、NDMI、NDBI 还是 NBR，用户侧输出统一命名为：
@@ -138,31 +184,44 @@ data/<uuid>/output/
 
 ## V1 限制
 
-这些限制是 V1 边界，不是缺陷：
+以下是 V1 边界或者需要注意的地方：
 
 - 当前真实 raster preparation 只接入 Sentinel-2；
-- Sentinel-2 单 tile 约为 100 km * 100 km，V1 最大可下载 scene 数量限制为 20，本地内存不足时可能达不到这个数；
+- Sentinel-2 单 tile 约为 100 km * 100 km，考虑运行等待时间与运行内存限制，V1 最大可下载 scene 数量限制为 20，本地内存不足时可能达不到这个数；
 - 当前适合中小尺度行政区或城市区域，推荐覆盖面积小于 10 万平方千米；
 - 过大的 AOI 可能导致下载慢、处理慢或失败；
 - 靠海城市、包含领海、岛屿或复杂 MultiPolygon 的 AOI 可能出现覆盖率与视觉效果不稳定；
 - 当前日志主要输出在终端，尚未持久化为 `workflow_trace.json`；
-- 当前是本地命令行 / local workflow，没有 Web 前端；
-- 当前没有 FastAPI backend、Redis queue、worker、job lifecycle manager、用户系统；
+- V1 workflow 本身是本地命令行 / local workflow，没有 Web 前端；
+- V1 本身没有 FastAPI backend、Redis queue、worker、job lifecycle manager、用户系统；
 - 当前没有 GEE、多数据源自动选择、DEM、population、night lights、land cover 产品；
 - 当前不是生产级 GIS 平台，而是本地可运行的 V1 agent。
 
-## V2 方向
+## V2 当前状态
 
-V2 将聚焦服务化和部署：
+V2 已经完成本地服务化和展示部署闭环。V2 不改变 V1 的 raster workflow、工具链、指数算法和受控执行架构，而是在 V1 外层增加：
 
 - FastAPI backend；
 - Redis queue；
-- worker；
-- frontend；
-- job status API；
-- file download API；
-- job lifecycle cleanup；
-- CPU server deployment。
+- 默认 2 个 worker；
+- job 创建、状态查询、状态消息和结果下载 API；
+- worker 心跳与 running job 心跳失联兜底；
+- 30 分钟 job / workspace lifecycle cleanup；
+- Vue / Vite / TypeScript 前端；
+- `preview.png` 展示与 `metadata.json`、`preview.png`、`result.tif` 下载；
+- Vercel 前端部署；
+- 本地电脑 Docker 后端通过内网穿透提供公网访问。
+
+当前 V2 部署形态是：
+
+```text
+Vercel 前端
+  -> 内网穿透公网地址
+    -> 本地 Docker backend
+      -> FastAPI API / Redis / workers
+```
+
+该部署适合演示和小规模试用，不是生产级 GIS 平台。长期稳定运行仍需要固定域名、稳定后端服务器、监控、日志、鉴权和更完整的任务管理。
 
 V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用于全球范围 scale-aware source 自动选择，以及 DEM、population、night lights、land cover 等更多专题产品。
 
@@ -174,6 +233,9 @@ V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用
 - [V1 总结](docs/v1-summary.md)
 - [项目架构](docs/architecture.md)
 - [开发日志](docs/development-log.md)
+- [Backend 服务](docs/backend.md)
+- [Frontend 前端](docs/frontend.md)
+- [V2 部署](docs/deployment.md)
 - [栅格工具链](docs/raster-toolchain.md)
 - [关键设计决策](docs/design-decisions.md)
 - [Demo Cases](docs/demo-cases.md)

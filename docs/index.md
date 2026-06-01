@@ -2,6 +2,8 @@
 
 Raster Map Agent 是一个自然语言驱动的、受控型 Raster Workflow Agent。当前 V1 已经可以在本地端到端运行 Sentinel-2 指数产品生成流程，并输出统一命名的结果文件。
 
+V2 已经在 V1 workflow 外层补齐服务化和展示闭环：本地 Docker 后端提供 FastAPI / Redis / worker job 服务，Vue 前端部署在 Vercel，并通过本地电脑的内网穿透公网地址访问后端。
+
 ## V1 能力概览
 
 当前 V1 支持：
@@ -57,6 +59,41 @@ data/<uuid>/output/
 
 产品类型、指数名、公式、数据源、时间范围和空间信息写入 `metadata.json`，不通过文件名表达。
 
+## V2 能力概览
+
+V2 在不改变 V1 workflow、工具链、指数算法和受控执行架构的基础上，补齐了服务化、前端和本地部署展示闭环。
+
+当前 V2 支持：
+
+- FastAPI backend，将一次用户请求包装为一个 `job`；
+- Redis queue，用于保存 job 状态并管理 worker 任务队列；
+- 默认 2 个 worker 并发消费任务并调用现有 workflow；
+- `POST /jobs` 创建任务；
+- `GET /jobs/{job_id}` 查询任务状态、阶段信息和错误信息；
+- `GET /jobs/{job_id}/metadata` 下载 `metadata.json`；
+- `GET /jobs/{job_id}/preview` 下载或展示 `preview.png`；
+- `GET /jobs/{job_id}/result` 下载 `result.tif`；
+- `GET /health` 后端健康检查；
+- worker heartbeat 和 running job 心跳失联兜底；
+- 30 分钟 job / workspace 生命周期清理；
+- Vue / Vite / TypeScript 前端；
+- 前端提交自然语言请求、轮询任务状态、展示 final answer 和 preview；
+- 前端下载 `metadata.json`、`preview.png`、`result.tif`；
+- Vercel 前端部署；
+- 本地 Docker backend 通过内网穿透提供公网访问。
+
+当前 V2 部署形态为：
+
+```text
+Vercel 前端
+-> 内网穿透公网地址
+-> 本地 Docker backend
+-> FastAPI / Redis / workers
+```
+快速访问：https://raster-map-agent.vercel.app/
+
+> 注意：没有租长期服务器（抱歉🙃），服务不一定在线，如果无法访问或需要体验，欢迎联系Email-`a1913397362@163.com`
+
 ## 文档导航
 
 - [V1 总结](v1-summary.md)
@@ -66,4 +103,7 @@ data/<uuid>/output/
 - [关键设计决策](design-decisions.md)
 - [Demo Cases](demo-cases.md)
 - [Scene 选择算法迭代](scene-selection-evolution.md)
+- [Backend 服务](backend.md)
+- [Frontend 前端](frontend.md)
+- [V2 部署](deployment.md)
 - [路线图](roadmap.md)

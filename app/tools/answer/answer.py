@@ -25,6 +25,8 @@ AGENT_CAPABILITY_KEYWORDS = (
     "您如何使用",
     "你是干",
     "您是干",
+    "你可以干",
+    "你能干嘛",
     "你是做",
     "您是做",
     "你是什么",
@@ -204,7 +206,7 @@ def _call_zhipuai_chat(messages: list[dict[str, str]]) -> str:
         },
         method="POST",
     )
-    with urlopen(request, timeout=60) as response:
+    with urlopen(request, timeout=120) as response:
         data = json.loads(response.read().decode("utf-8"))
 
     try:

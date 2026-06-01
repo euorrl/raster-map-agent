@@ -10,9 +10,9 @@ from app.workflows.workflow import run_workflow  # noqa: E402
 
 
 def main() -> None:
-    configure_logging("INFO")
+    # configure_logging("INFO")  # 打印日志
 
-    user_query = "你是"
+    user_query = input("请输入您的请求：")
     state = run_workflow(user_query)
 
     print("\n" + "-" * 30 + "\n")

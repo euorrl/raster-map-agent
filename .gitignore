@@ -21,3 +21,8 @@ data/*
 !data/README.md
 outputs/*
 !outputs/README.md
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
