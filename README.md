@@ -2,7 +2,7 @@
 
 Raster Map Agent 是一个自然语言驱动的 **栅格地图生成Agent**。用户用自然语言描述想生成的遥感专题图，系统会规划任务、使用真实 Sentinel-2 数据运行受控 workflow，并输出 GeoTIFF、预览图和精简 metadata。
 
-快速访问：https://raster-map-agent.vercel.app/
+快速访问：https://raster-map-agent.vercel.app/ （需要访问外网）
 
 项目详细文档：https://raster-map-agent.readthedocs.io/en/latest/
 
