@@ -133,6 +133,7 @@ docker compose up --build
 启动前端：
 ```bash
 cd frontend
+npm ci
 npm run dev
 ```
 
