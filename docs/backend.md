@@ -1,5 +1,7 @@
 # Backend 服务
 
+English version: [Backend Service](en/backend.md)
+
 本文记录 V2 后端服务层的当前实现。V2 没有改变 V1 的 raster workflow、工具链、指数算法和受控执行架构；它是在 V1 workflow 外层增加服务化入口，使前端和外部调用方可以通过 job API 提交任务、查询状态并下载结果。
 
 当前后端仍是本地 / 单机部署形态，不是生产级 GIS 平台。它适合本地演示、课程项目展示和小规模外部访问。

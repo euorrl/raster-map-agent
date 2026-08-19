@@ -1,5 +1,7 @@
 # V1 总结
 
+English version: [V1 Summary](en/v1-summary.md)
+
 Raster Map Agent V1 是一个本地端到端可运行的受控型 Raster Workflow Agent。它可以把自然语言请求转为 Sentinel-2 指数产品生成 workflow，并输出统一命名的用户结果。
 
 ## V1 已实现能力

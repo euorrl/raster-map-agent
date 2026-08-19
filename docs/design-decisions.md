@@ -1,5 +1,7 @@
 # 关键设计决策
 
+English version: [Key Design Decisions](en/design-decisions.md)
+
 本文记录当前 V1 中仍然有效的设计决策。
 
 ## 受控型 Workflow，而不是自由 Tool Calling
