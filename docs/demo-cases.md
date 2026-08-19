@@ -1,5 +1,7 @@
 # Demo Cases
 
+English version: [Demo Cases](en/demo-cases.md)
+
 本文展示当前 V1 的 Sentinel-2 指数 demo case。材料来自 `docs/materials/` 中已经生成的 `preview.png` 与 `metadata.json` 等价文件。
 
 所有 case 的用户侧输出结构统一为：

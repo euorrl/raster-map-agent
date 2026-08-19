@@ -1,5 +1,7 @@
 # V2 部署
 
+English version: [V2 Deployment](en/deployment.md)
+
 V2 的实际部署形态是：
 
 ```text

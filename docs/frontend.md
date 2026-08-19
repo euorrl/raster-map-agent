@@ -1,5 +1,7 @@
 # Frontend 前端
 
+English version: [Frontend](en/frontend.md)
+
 V2 已加入一个最小可用的 Vue 前端，用于把自然语言请求提交给后端，并展示 job 状态、最终回答、预览图和下载入口。
 
 前端不包含 raster 业务逻辑。它只负责：

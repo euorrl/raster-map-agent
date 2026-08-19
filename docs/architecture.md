@@ -1,5 +1,7 @@
 # 项目架构
 
+English version: [Project Architecture](en/architecture.md)
+
 本文记录当前 V1 的代码结构、workflow 架构和主要节点职责。以当前实现为准，V1 是一个受控型 workflow agent，而不是让 LLM 自由调用底层工具的 agent。
 
 ## 总体定位

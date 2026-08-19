@@ -1,5 +1,7 @@
 # Raster Map Agent
 
+[中文](#raster-map-agent) | [English](#english)
+
 Raster Map Agent 是一个自然语言驱动的 **栅格地图生成Agent**。用户用自然语言描述想生成的遥感专题图，系统会规划任务、使用真实 Sentinel-2 数据运行受控 workflow，并输出 GeoTIFF、预览图和精简 metadata。
 
 快速访问：https://raster-map-agent.vercel.app/
@@ -242,3 +244,247 @@ V3 / future research 可以探索 GEE-based raster_prepare 替代工具包，用
 - [路线图](docs/roadmap.md)
 
 或者访问：https://raster-map-agent.readthedocs.io/en/latest/
+
+## English
+
+Raster Map Agent is a natural-language-driven **raster map generation agent**. Users describe the remote-sensing thematic map they want in natural language. The system plans the task, runs a controlled workflow with real Sentinel-2 data, and outputs a GeoTIFF, a preview image, and concise metadata.
+
+Quick access: https://raster-map-agent.vercel.app/
+
+Full English documentation: https://raster-map-agent.readthedocs.io/en/latest/en/
+
+> Note: this project does not currently run on a rented long-term server, so the public service may not always be online. If the site is unavailable or you would like a demo, please contact `a1913397362@163.com`.
+
+### Current Status
+
+Completed:
+
+- V1: a local end-to-end raster map generation workflow.
+- V2: a full path from the local workflow to an accessible service, including a FastAPI + Redis + worker backend, a Vue frontend, result download APIs, and public access through Vercel plus an intranet tunnel.
+
+### Supported Products
+
+The currently executable remote-sensing data pipeline uses Sentinel-2. Landsat configuration is retained in the registry, but V1 `raster_prepare` is connected only to Sentinel-2.
+
+| Product | Meaning | Main Uses | V1 Support | Data Source |
+| --- | --- | --- | --- | --- |
+| NDVI | Normalized Difference Vegetation Index | Vegetation greenness, vegetation cover, crop growth | Yes | Sentinel-2 |
+| SAVI | Soil Adjusted Vegetation Index | Vegetation analysis in sparse vegetation or strong bare-soil background areas | Yes | Sentinel-2 |
+| NDWI | Normalized Difference Water Index | Water bodies, water distribution, surface-water extraction | Yes | Sentinel-2 |
+| NDMI | Normalized Difference Moisture Index | Vegetation water content, surface moisture, drought stress | Yes | Sentinel-2 |
+| NDBI | Normalized Difference Built-up Index | Built-up areas, impervious surfaces, urban expansion | Yes | Sentinel-2 |
+| NBR | Normalized Burn Ratio | Burn scars, fire impact, vegetation damage | Yes | Sentinel-2 |
+
+DEM, population, night lights, land cover, GEE, and automatic multi-source selection are not implemented in the current V1 feature set.
+
+### High-Level Architecture
+
+The current workflow is a controlled LangGraph tool-call workflow composed of explicit nodes:
+
+- `planner_node`: creates a controlled plan from the user input and routes the task to either `raster_product_generate` or `direct_answer`.
+- `registry_node`: runs only for `raster_product_generate` tasks and resolves the index, data source, bands, formula, and rendering configuration.
+- `compiler_node`: compiles the plan and registry context into linear tool calls.
+- `tool_executor_node`: executes tool calls step by step.
+- `tool_validator_node`: validates a tool result when the completed tool call has a tool rule.
+- `tool_adjuster_node`: adjusts a tool call when validation returns a retryable result, then sends the workflow back to execute the tool again.
+- `answer_node`: the terminal node that returns the final answer or generates a fallback response on failure.
+
+Controlled tool chain for the `raster_product_generate` route:
+
+```text
+workspace.create_workspace
+raster_prepare.prepare_raster_inputs
+index_calculation.calculate_raster_index
+render_preview.render_index_preview
+metadata.export_metadata
+answer.generate_final_answer
+```
+
+The `direct_answer` route executes only:
+
+```text
+answer.generate_final_answer
+```
+
+### Full LangGraph Workflow
+
+<p align="center">
+  <img src="docs/materials/diagram.png" alt="LangGraph workflow architecture" width="600">
+</p>
+
+### Project Structure
+
+```text
+app/
+  agent/                 # planner, workflow nodes, validator, adjuster
+  registry/              # Sentinel-2 index product configuration
+  schemas/               # AgentState
+  tools/                 # domain tools that can be tested independently
+  workflows/             # templates, compiler, executor, tool rules
+docs/                    # design and development documentation
+scripts/                 # local run scripts
+tests/                   # unit tests
+data/                    # local runtime artifacts, excluded from git
+```
+
+### Local Run
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+Configure `.env`:
+
+This project uses Zhipu AI as the LLM provider: https://open.bigmodel.cn/
+
+```env
+ZHIPUAI_API_KEY=
+ZHIPUAI_MODEL=glm-4.7-flash
+ZHIPUAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+DATA_DIR=./data
+```
+
+Run the example:
+
+```bash
+python scripts/run_workflow.py
+```
+
+After the run completes, check:
+
+```text
+data/<uuid>/output/
+  metadata.json
+  preview.png
+  result.tif
+```
+
+### Local Backend / Frontend Run
+
+The project includes a minimal usable FastAPI backend, Redis queue, workers, and frontend. The backend wraps each user request as a job, then uses the job id to query status and download result files. The default local frontend is `http://127.0.0.1:8000`.
+
+> Note: before running, make sure Docker Desktop, Node.js / npm, and a correctly configured `.env` file are available.
+
+Start the backend with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Start the frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+The running stack includes:
+
+- `Default listener`: http://127.0.0.1:8000
+- `api`: FastAPI service
+- `redis`: stores job status and acts as the task queue
+- `worker`: 2 workers by default, consuming jobs from Redis and executing the workflow
+
+API documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Main endpoints:
+
+```text
+POST /jobs
+GET /jobs/{job_id}
+GET /jobs/{job_id}/metadata
+GET /jobs/{job_id}/preview
+GET /jobs/{job_id}/result
+GET /health
+```
+
+Each user request creates a job. After a raster job succeeds, the backend returns the corresponding `metadata.json`, `preview.png`, and `result.tif` from the workspace through `job_id`. Jobs are currently retained for 30 minutes by default, after which the worker deletes the Redis job record and the corresponding workspace.
+
+### Outputs
+
+Whether the user requests NDVI, SAVI, NDWI, NDMI, NDBI, or NBR, output files are named consistently:
+
+- `metadata.json`: concise product information for users and result provenance
+- `preview.png`: rendered PNG preview
+- `result.tif`: final index GeoTIFF
+
+Product type, index name, formula, data source, time range, spatial information, and quality diagnostics are written to `metadata.json` instead of being encoded in file names.
+
+### Direct Answer
+
+The `direct_answer` route is used for:
+
+- general knowledge questions
+- system capability questions, such as "What can you do?"
+- requests for currently unsupported products
+
+This route does not run raster tools or create the full raster workflow. Capability answers clearly state that V1 currently supports NDVI, SAVI, NDWI, NDMI, NDBI, and NBR. Unsupported products are explained honestly, with suggestions to ask about system capabilities or use a supported index product.
+
+### V1 Limitations
+
+The following are V1 boundaries or caveats:
+
+- Real raster preparation currently uses only Sentinel-2.
+- A Sentinel-2 tile is about 100 km * 100 km. Considering runtime and memory limits, V1 can download at most 20 scenes; this limit may be lower when local memory is insufficient.
+- The current version is suitable for small to medium administrative regions or urban areas. A coverage area below 100,000 square kilometers is recommended.
+- Very large AOIs may cause slow downloads, slow processing, or failures.
+- AOIs for coastal cities, territorial seas, islands, or complex MultiPolygons may produce unstable coverage rates or visual results.
+- Logs are currently printed mainly to the terminal and are not yet persisted as `workflow_trace.json`.
+- V1 itself is a local command-line workflow and does not include a web frontend.
+- V1 itself does not include a FastAPI backend, Redis queue, workers, a job lifecycle manager, or a user system.
+- GEE, automatic multi-source selection, DEM, population, night lights, and land cover products are not currently available.
+- This is not a production-grade GIS platform; it is a locally runnable V1 agent.
+
+### V2 Current Status
+
+V2 has completed the local service layer and demo deployment loop. It does not change the V1 raster workflow, tool chain, index algorithms, or controlled execution architecture. Instead, it adds:
+
+- FastAPI backend
+- Redis queue
+- 2 workers by default
+- APIs for job creation, status query, status messages, and result downloads
+- worker heartbeat and fallback handling for lost running-job heartbeats
+- 30-minute job / workspace lifecycle cleanup
+- Vue / Vite / TypeScript frontend
+- `preview.png` display and downloads for `metadata.json`, `preview.png`, and `result.tif`
+- Vercel frontend deployment
+- public access to the local Docker backend through an intranet tunnel
+
+Current V2 deployment shape:
+
+```text
+Vercel frontend
+  -> intranet tunnel public URL
+    -> local Docker backend
+      -> FastAPI API / Redis / workers
+```
+
+This deployment is suitable for demos and small-scale trials, not for a production-grade GIS platform. Long-term stable operation still requires a fixed domain, stable backend server, monitoring, logs, authentication, and more complete task management.
+
+V3 / future research may explore a GEE-based replacement for `raster_prepare`, enabling global scale-aware source selection and additional thematic products such as DEM, population, night lights, and land cover.
+
+### Documentation
+
+Detailed design documents are available in `docs/en/`:
+
+- [Navigation](docs/en/index.md)
+- [V1 Summary](docs/en/v1-summary.md)
+- [Project Architecture](docs/en/architecture.md)
+- [Development Log](docs/en/development-log.md)
+- [Backend Service](docs/en/backend.md)
+- [Frontend](docs/en/frontend.md)
+- [V2 Deployment](docs/en/deployment.md)
+- [Raster Toolchain](docs/en/raster-toolchain.md)
+- [Key Design Decisions](docs/en/design-decisions.md)
+- [Demo Cases](docs/en/demo-cases.md)
+- [Scene Selection Evolution](docs/en/scene-selection-evolution.md)
+- [Roadmap](docs/en/roadmap.md)
+
+Or visit: https://raster-map-agent.readthedocs.io/en/latest/en/

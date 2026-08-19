@@ -1,5 +1,7 @@
 # 开发日志
 
+English version: [Development Log](en/development-log.md)
+
 本文按阶段记录项目从工程骨架到 V1 收尾的演进。当前代码已经进入 V1 完成和文档对齐阶段。
 
 ## 阶段 1：工程骨架

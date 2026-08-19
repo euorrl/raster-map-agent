@@ -1,5 +1,7 @@
 # Scene 选择算法迭代
 
+English version: [Scene Selection Algorithm Evolution](en/scene-selection-evolution.md)
+
 本文记录 raster 数据准备模块中 `scene_plan` 的推理过程和算法演进。
 
 这一部分是当前项目里最关键的工程判断之一：遥感数据不是简单地“按地点下载一张图”，而是要从很多候选 scene 中选择一个尽量少、尽量低云、又能覆盖 AOI 的组合。

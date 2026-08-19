@@ -17,7 +17,7 @@
           v-model="query"
           :disabled="isBusy"
           rows="4"
-          placeholder="我想看看米兰的植被情况"
+          placeholder="我想看看米兰的植被情况 / Show me the vegetation conditions in Milan"
         />
         <div class="form-actions">
           <button class="primary-button" type="submit" :disabled="!canSubmit">

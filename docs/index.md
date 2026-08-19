@@ -1,5 +1,7 @@
 # Raster Map Agent 文档
 
+English version: [Home](en/index.md)
+
 Raster Map Agent 是一个自然语言驱动的、受控型 Raster Workflow Agent。当前 V1 已经可以在本地端到端运行 Sentinel-2 指数产品生成流程，并输出统一命名的结果文件。
 
 V2 已经在 V1 workflow 外层补齐服务化和展示闭环：本地 Docker 后端提供 FastAPI / Redis / worker job 服务，Vue 前端部署在 Vercel，并通过本地电脑的内网穿透公网地址访问后端。
